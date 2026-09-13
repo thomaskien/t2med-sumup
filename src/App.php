@@ -156,9 +156,11 @@ final class App {
             });
             try {
                 $result = $this->sumup->start($payment);
-                $this->db->query("UPDATE payments SET payment_status='pending',checkout_id=?,client_transaction_id=?,error_message='' WHERE id=?", [$result['checkout_id'], $result['client_transaction_id'], $payment['id']]);
+                // Ein zweites Browserfenster könnte während des Starts bereits einen
+                // endgültigen Transaktionsstatus erhalten haben. Diesen nicht zurücksetzen.
+                $this->db->query("UPDATE payments SET payment_status=CASE WHEN payment_status IN ('successful','failed','cancelled') THEN payment_status ELSE 'pending' END,checkout_id=?,client_transaction_id=?,error_message='' WHERE id=?", [$result['checkout_id'], $result['client_transaction_id'], $payment['id']]);
             } catch (TransportError $e) {
-                $this->db->query('UPDATE payments SET payment_status=?,error_message=? WHERE id=?', [$e->ambiguous ? 'unknown' : 'failed', $e->getMessage(), $payment['id']]);
+                $this->db->query("UPDATE payments SET payment_status=?,error_message=? WHERE id=? AND payment_status NOT IN ('successful','failed','cancelled')", [$e->ambiguous ? 'unknown' : 'failed', $e->getMessage(), $payment['id']]);
             }
             return $this->publicPayment($this->db->one('SELECT * FROM payments WHERE id=?', [$payment['id']]));
         });

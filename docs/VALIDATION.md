@@ -17,8 +17,10 @@ Schnittstellenantworten. Sie prüfen serverseitige Beträge, unveränderliche Pr
 Sitzungszuordnung, Doppelstarts, verlorene Startantworten, fehlende Übereinstimmung des
 Zahlungsbetrags und wiederholbare Dokumentation. Polling erzeugt keinen Akteneintrag.
 
-GitHub Actions führt dieselben Kernprüfungen und einen echten Installer-/HTTPS-Test auf
-Ubuntu 24.04 aus. Das aktuelle Ergebnis ist im Actions-Bereich des Repositories sichtbar.
+Der Installer-/HTTPS-Test auf Ubuntu 24.04 wurde in GitHub Actions erfolgreich ausgeführt:
+Installation, eigener Apache-Dienst, eigener PHP-FPM-Dienst und Abruf der Zahlungsseite
+mit geprüftem Serverzertifikat. GitHub Actions wiederholt diesen kurzen Test sowie die
+Kernprüfungen bei Änderungen. Die Ergebnisse stehen im Actions-Bereich des Repositories.
 
 Noch nicht mit echten Geräten/Zugangsdaten geprüft: SumUp Solo, die konkrete
 t2med-Installation sowie Installation/Protokollstart auf Windows und Linux bzw. macOS.

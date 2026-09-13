@@ -1,0 +1,10 @@
+/dist/
+/var/
+/config/local.toml
+*.sqlite*
+*.key
+client/client.toml
+client/client.json
+client/server.crt
+.DS_Store
+__pycache__/

@@ -1,0 +1,60 @@
+name: Check and release
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: curl, pdo_sqlite, sodium
+          coverage: none
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.23.x'
+          cache: false
+      - run: php tests/critical.php
+      - run: find src public scripts -name '*.php' -exec php -l {} \;
+      - run: bash -n scripts/install-server.sh client/install-linux.sh client/install-macos.command
+      - run: cd client && go test ./...
+      - run: bash scripts/build-client.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: starters
+          path: dist/*
+  server-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install isolated server in mock mode
+        run: printf '\n\n\n\n' | sudo bash scripts/install-server.sh
+      - name: Check HTTPS and PHP
+        run: |
+          sudo systemctl is-active kienzle-sumup-apache kienzle-sumup-php
+          sudo curl --fail --silent --show-error --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$(hostname):7868:127.0.0.1" "https://$(hostname):7868/" | grep -q 'Kartenzahlung'
+      - name: Installer diagnostics
+        if: failure()
+        run: sudo journalctl -u kienzle-sumup-apache -u kienzle-sumup-php --no-pager -n 60
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check, server-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: starters
+          path: dist
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Kienzle-SumUp $GITHUB_REF_NAME" --notes-file docs/RELEASE.md

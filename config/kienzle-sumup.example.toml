@@ -1,0 +1,31 @@
+# Der Installer erstellt /etc/kienzle-sumup/kienzle-sumup.toml.
+# Strings in Anführungszeichen, Ganzzahlen, boolesche Werte und String-Arrays.
+[app]
+base_url = "https://praxisserver:7868"
+port = 7868
+state_dir = "/var/lib/kienzle-sumup"
+timezone = "Europe/Berlin"
+session_hours = 8
+max_amount_cents = 100000
+development = false
+launcher_key = "INSTALLER_GENERIERT_DIESEN_WERT"
+encryption_key = "INSTALLER_GENERIERT_DIESEN_WERT"
+
+[sumup]
+mode = "mock"
+api_key = ""
+affiliate_key = ""
+app_id = "de.kienzle.sumup"
+merchant_code = ""
+reader_id = ""
+
+[fhir]
+mode = "mock"
+# Vom PHP-Server erreichbare Adresse. Der Launcher darf KEIN beliebiges Ziel bestimmen.
+base_url = "https://t2med-server:16567/aps/fhir/api/r4"
+# Exakte Basis-URLs, die t2med beim Start übergeben darf.
+launch_urls = ["https://t2med-server:16567/aps/fhir/api/r4"]
+api_key = ""
+entry_code = "ZAHLUNG"
+# Optional: vertrauenswürdiges Zertifikat / CA der t2med-Installation.
+ca_file = ""

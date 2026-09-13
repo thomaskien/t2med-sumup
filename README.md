@@ -1,3 +1,8 @@
+###### achtung noch total ungetestet! #######
+
+
+
+
 # kienzle-sumup für T2med
 
 Eine kleine PHP-Webanwendung für Kartenzahlungen am SumUp Solo. Leistungen auswählen,

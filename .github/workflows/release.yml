@@ -21,6 +21,7 @@ jobs:
           go-version: '1.23.x'
           cache: false
       - run: php tests/critical.php
+      - run: python3 tests/tls-pin.py
       - run: find src public scripts -name '*.php' -exec php -l {} \;
       - run: bash -n scripts/install-server.sh client/install-linux.sh client/install-macos.command
       - run: cd client && go test ./...

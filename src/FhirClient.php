@@ -12,7 +12,8 @@ final class FhirClient {
             'Authorization: Bearer ' . $token, 'X-API-Key: ' . $this->config->get('fhir', 'api_key'),
             'X-TreatWarningAsError: true', 'Prefer: return=OperationOutcome', 'User-Agent: kienzle-sumup/' . trim(file_get_contents(dirname(__DIR__) . '/VERSION'))];
         if ($patient) $headers[] = 'X-FHIR-Profile: https://fhir.t2med.de/StructureDefinition/FhirApiPatient|1.0.0';
-        return $this->http->request($method, rtrim($this->config->get('fhir', 'base_url'), '/') . $path, $headers, $body, $this->config->get('fhir', 'ca_file', ''));
+        return $this->http->request($method, rtrim($this->config->get('fhir', 'base_url'), '/') . $path, $headers, $body,
+            $this->config->get('fhir', 'ca_file', ''), $this->config->get('fhir', 'pin_certificate', false));
     }
     public function patient(string $context, string $token): array {
         if ($this->config->get('fhir', 'mode') === 'mock') return ['id' => 'demo-' . $context, 'name' => 'Erika Musterfrau', 'birthdate' => '1980-04-12'];

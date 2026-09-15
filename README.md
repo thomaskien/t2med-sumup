@@ -73,6 +73,23 @@ beibehalten. Das Zertifikat muss auf den Clients vertraut werden; eine lange Lau
 allein erzeugt kein Browservertrauen. TLS bleibt geprüft. Für t2med kann ein eigenes
 öffentliches PEM-Zertifikat/CA hinterlegt werden. Keine privaten t2med-Schlüssel kopieren.
 
+Für ein t2med-Zertifikat ohne passenden Hostnamen kann die Verbindung gezielt an dessen
+öffentlichen Schlüssel gebunden werden. Dazu das **öffentliche Serverzertifikat** direkt
+vom t2med-Server oder seiner lokalen Schnittstelle beziehen und geschützt als `ca_file`
+hinterlegen. Hierfür genau ein Serverzertifikat verwenden; kein CA-Bundle und keine
+ungeprüfte Übernahme aus einem fremden Netzwerk. Unter dem vorhandenen Abschnitt `[fhir]`:
+
+```toml
+ca_file = "/etc/kienzle-sumup/t2med-ca.pem"
+pin_certificate = true
+```
+
+Nur bei dieser ausdrücklich aktivierten Option ersetzt die Schlüsselbindung den
+Hostnamenvergleich für FHIR. Zertifikatsvertrauen und Gültigkeit bleiben geprüft;
+ein anderer öffentlicher Schlüssel wird vor der Übertragung von Zugangsdaten abgelehnt.
+Bei einem beabsichtigten Schlüsselwechsel die Zertifikatsdatei erneut sicher übertragen.
+Standard ist `false` mit normaler Hostnamenprüfung. Der Installer erhält diese Einstellung.
+
 Die Firewall für TCP 7868 nur im Praxisnetz öffnen. Der Installer ändert keine Firewall.
 
 ## Starter auf den Arbeitsplätzen

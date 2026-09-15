@@ -70,7 +70,8 @@ def main():
     if fhir_mode not in ('mock','live'): raise ValueError('Bitte mock oder live wählen.')
     fhir = {'mode':fhir_mode, 'base_url':get('fhir','base_url','https://t2med-server:16567/aps/fhir/api/r4'),
             'launch_urls':get('fhir','launch_urls',[]), 'api_key':get('fhir','api_key'),
-            'entry_code':get('fhir','entry_code','ZAHLUNG'), 'ca_file':get('fhir','ca_file')}
+            'entry_code':get('fhir','entry_code','ZAHLUNG'), 'ca_file':get('fhir','ca_file'),
+            'pin_certificate':get('fhir','pin_certificate',False)}
     if fhir_mode=='live':
         fhir['base_url'] = ask('FHIR-Basisadresse, vom Server erreichbar',fhir['base_url']).rstrip('/')
         fhir['launch_urls'] = [s.strip().rstrip('/') for s in ask('Erlaubte fhirBasisUrl aus t2med (mehrere mit Komma trennen)', ','.join(fhir['launch_urls']) or fhir['base_url']).split(',') if s.strip()]
@@ -82,6 +83,12 @@ def main():
             if 'PRIVATE KEY' in pem: raise ValueError('Bitte nur öffentliches t2med-Zertifikat/CA angeben.')
             write_private(ROOT/'t2med-ca.pem',pem,0o640)
             fhir['ca_file'] = str(ROOT/'t2med-ca.pem')
+        pin_cert = ask('t2med-Zertifikat ohne passenden Hostnamen: an öffentlichen Schlüssel binden (ja/nein)', 'ja' if fhir['pin_certificate'] else 'nein')
+        if pin_cert not in ('ja', 'nein'):
+            raise ValueError('Bitte nur ja oder nein eingeben.')
+        fhir['pin_certificate'] = pin_cert == 'ja'
+        if fhir['pin_certificate'] and not fhir['ca_file']:
+            raise ValueError('Bei Schlüsselbindung muss ca_file mit öffentlichem t2med-Zertifikat gefüllt sein.')
     config = {'app': {'base_url':base,'port':port,'state_dir':'/var/lib/kienzle-sumup',
              'timezone':get('app','timezone','Europe/Berlin'),'session_hours':8,
              'max_amount_cents':int(ask('Maximalbetrag pro Zahlung in Cent',str(get('app','max_amount_cents',100000)))),

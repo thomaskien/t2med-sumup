@@ -2,6 +2,13 @@
 
 Stand: 13. September 2026.
 
+Ergänzung vom 15. September 2026: `python3 tests/tls-pin.py` mit echten lokalen
+TLS-Verbindungen bestanden. Ein selbstsigniertes V1-Zertifikat ohne Erweiterungen/SAN
+wird nur bei aktivierter Schlüsselbindung akzeptiert. Ein anderer öffentlicher Schlüssel
+trotz vertrauenswürdiger Zertifikatskette wird mit cURL 90 vor HTTP-Datenübertragung
+abgewiesen; fehlende Zertifikatsdatei und normale Hostnamenprüfung lehnen sicher ab.
+Die bestehenden PHP-Kernprüfungen sind ebenfalls bestanden.
+
 Lokal unter macOS ausgeführt:
 
 - PHP-Syntaxprüfung und `php tests/critical.php` mit PHP 8.5.8: bestanden.

@@ -44,6 +44,11 @@ final class Config {
             if (!$fhir || ($fhir['scheme'] ?? '') !== 'https' || empty($fhir['host']) || isset($fhir['user']) || isset($fhir['query']) || isset($fhir['fragment'])) throw new \RuntimeException('FHIR benötigt eine feste HTTPS-Basisadresse.');
             if (!$this->get('fhir', 'api_key') || !is_array($this->get('fhir', 'launch_urls')) || !$this->get('fhir', 'launch_urls')) throw new \RuntimeException('FHIR-Schlüssel oder erlaubte Aufrufadressen fehlen.');
         }
+        $pin = $this->get('fhir', 'pin_certificate', false);
+        if (!is_bool($pin)) throw new \RuntimeException('fhir.pin_certificate muss true oder false sein.');
+        if ($pin && (!is_string($this->get('fhir', 'ca_file')) || !str_starts_with($this->get('fhir', 'ca_file'), '/'))) {
+            throw new \RuntimeException('Zertifikatsbindung benötigt einen absoluten ca_file-Pfad zum t2med-Serverzertifikat.');
+        }
         $entry = $this->get('fhir', 'entry_code', 'ZAHLUNG');
         if (!is_string($entry) || $entry === '' || mb_strlen($entry) > 20) throw new \RuntimeException('Aktenkürzel muss 1–20 Zeichen lang sein.');
     }

@@ -28,4 +28,7 @@ launch_urls = ["https://t2med-server:16567/aps/fhir/api/r4"]
 api_key = ""
 entry_code = "ZAHLUNG"
 # Optional: vertrauenswürdiges Zertifikat / CA der t2med-Installation.
+# Hinweis: Bei pin_certificate=true muss ca_file das öffentliche Serverzertifikat
+# enthalten, das direkt vom t2med-Server bezogen wurde (nicht CA-Bundle).
 ca_file = ""
+pin_certificate = false

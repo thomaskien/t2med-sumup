@@ -42,7 +42,7 @@ final class FakeHttp extends HttpClient {
     public bool $patientUnavailable=false;
     public ?array $record=null;
     public string $reference='';
-    public function request(string $method,string $url,array $headers,?array $body=null,string $caFile=''):array {
+    public function request(string $method,string $url,array $headers,?array $body=null,string $caFile='',bool $pinCertificate=false):array {
         $this->calls[]=[$method,$url,$headers,$body];
         if (str_contains($url,'api.sumup.com')) {
             if ($method==='POST' && str_ends_with($url,'/checkout')) {

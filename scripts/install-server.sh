@@ -21,6 +21,10 @@ chmod 600 /etc/kienzle-sumup/server.key
 chmod 644 /etc/kienzle-sumup/server.crt
 # Ab hier nur die eigenen Dienste stoppen; vorhandene Apache-Konfigurationen nicht ändern.
 systemctl stop kienzle-sumup-apache.service kienzle-sumup-php.service 2>/dev/null || true
+touch /var/log/kienzle-sumup/php.log
+chown kienzle-sumup:kienzle-sumup /var/log/kienzle-sumup/php.log
+chmod 640 /var/log/kienzle-sumup/php.log
+
 install -d -m 755 /opt/kienzle-sumup
 for item in src public scripts config client VERSION README.md; do
   if [ -e "$source_dir/$item" ] && [ "$source_dir" != /opt/kienzle-sumup ]; then cp -R "$source_dir/$item" /opt/kienzle-sumup/; fi
@@ -35,7 +39,7 @@ test -x "$fpm" || { echo "PHP-FPM $php_version fehlt."; exit 1; }
 cat > /etc/kienzle-sumup/php-fpm.conf <<EOF
 [global]
 pid = /run/kienzle-sumup-php/php.pid
-error_log = /var/log/kienzle-sumup/php.log
+error_log = /var/log/kienzle-sumup/fpm.log
 daemonize = no
 [kienzle-sumup]
 user = kienzle-sumup

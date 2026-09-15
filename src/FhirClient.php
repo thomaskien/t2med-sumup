@@ -16,7 +16,11 @@ final class FhirClient {
     }
     public function patient(string $context, string $token): array {
         if ($this->config->get('fhir', 'mode') === 'mock') return ['id' => 'demo-' . $context, 'name' => 'Erika Musterfrau', 'birthdate' => '1980-04-12'];
-        $result = $this->request('GET', '/Patient?' . http_build_query(['identifier' => self::CONTEXT . '|' . $context]), $token, null, true);
+        try {
+            $result = $this->request('GET', '/Patient?' . http_build_query(['identifier' => self::CONTEXT . '|' . $context]), $token, null, true);
+        } catch (TransportError $e) {
+            throw new Problem('Patient konnte nicht aus t2med geladen werden: ' . $e->getMessage(), 502);
+        }
         if ($result['status'] !== 200) throw new Problem('Patientenkontext konnte nicht aus t2med geladen werden. Bitte erneut aus t2med öffnen.', 502);
         $body = $result['body']; $patients = [];
         if (($body['resourceType'] ?? '') === 'Patient') $patients[] = $body;

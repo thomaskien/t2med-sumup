@@ -60,6 +60,9 @@ kann beim erstmaligen Installieren von Apache/PHP deren Standarddienste aktivier
 | Fehlerprotokolle | `/var/log/kienzle-sumup` |
 | Client-Einrichtungsordner | `/root/kienzle-sumup-clients` |
 
+`php.log` enthält Anwendungsfehler, `fpm.log` die PHP-FPM-Dienstmeldungen und
+`apache-error.log` die Apache-Fehler. Vorhandene Logs bleiben bei Updates erhalten.
+
 ```bash
 sudo systemctl status kienzle-sumup-apache kienzle-sumup-php
 ```

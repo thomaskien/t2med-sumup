@@ -21,8 +21,23 @@ class HttpClient {
         // PHP 8.5 gibt das Handle automatisch frei; kein deprecated curl_close().
         $curl = null;
         if ($errno) {
-            $safe = in_array($errno, [CURLE_COULDNT_RESOLVE_HOST, CURLE_COULDNT_CONNECT, CURLE_SSL_CONNECT_ERROR, CURLE_PEER_FAILED_VERIFICATION], true);
-            throw new TransportError('Schnittstelle nicht erreichbar oder Antwort unterbrochen.', !$safe, $status);
+            // PHP stellt libcurl-Fehler 60 als CURLE_SSL_CACERT bereit.
+            $safe = in_array($errno, [CURLE_UNSUPPORTED_PROTOCOL, CURLE_URL_MALFORMAT,
+                CURLE_COULDNT_RESOLVE_HOST, CURLE_COULDNT_CONNECT, CURLE_SSL_CONNECT_ERROR,
+                CURLE_SSL_CACERT, CURLE_SSL_CACERT_BADFILE], true);
+            $message = match ($errno) {
+                CURLE_UNSUPPORTED_PROTOCOL => 'Die Schnittstellenadresse muss HTTPS verwenden.',
+                CURLE_URL_MALFORMAT => 'Die Schnittstellenadresse ist ungültig.',
+                CURLE_COULDNT_RESOLVE_HOST => 'Der Servername der Schnittstelle konnte nicht aufgelöst werden.',
+                CURLE_COULDNT_CONNECT => 'Die Schnittstelle ist unter der konfigurierten Adresse und dem Port nicht erreichbar.',
+                CURLE_SSL_CONNECT_ERROR => 'Die TLS-Verbindung zur Schnittstelle konnte nicht aufgebaut werden.',
+                CURLE_SSL_CACERT => 'Das Zertifikat der Schnittstelle wird nicht vertraut oder passt nicht zum Hostnamen bzw. zur IP-Adresse.',
+                CURLE_SSL_CACERT_BADFILE => 'Die hinterlegte CA-Zertifikatsdatei fehlt, ist nicht lesbar oder ungültig.',
+                CURLE_OPERATION_TIMEDOUT => 'Die Schnittstelle hat nicht rechtzeitig geantwortet. Der Ausgang eines Schreibversuchs kann noch offen sein.',
+                default => 'Schnittstelle nicht erreichbar oder Antwort unterbrochen.',
+            };
+            // Keine curl_error()-Rohmeldung: diese kann URLs und Zugangsdaten enthalten.
+            throw new TransportError($message . " (cURL $errno)", !$safe, $status);
         }
         try { $json = $raw === '' ? null : json_decode($raw, true, 128, JSON_THROW_ON_ERROR); }
         catch (\JsonException) { $json = null; }

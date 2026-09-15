@@ -39,6 +39,7 @@ final class FakeHttp extends HttpClient {
     public bool $wrongAmount=false;
     public bool $paymentFound=true;
     public bool $existingRecord=false;
+    public bool $patientUnavailable=false;
     public ?array $record=null;
     public string $reference='';
     public function request(string $method,string $url,array $headers,?array $body=null,string $caFile=''):array {
@@ -52,7 +53,10 @@ final class FakeHttp extends HttpClient {
             if (!$this->paymentFound) return ['status'=>404,'body'=>[]];
             return ['status'=>200,'body'=>['id'=>'transaction-1','client_transaction_id'=>'client-1','foreign_transaction_id'=>$this->reference,'merchant_code'=>'MTEST','currency'=>'EUR','amount'=>$this->wrongAmount ? 1 : 16,'status'=>'SUCCESSFUL']];
         }
-        if (str_contains($url,'/Patient?')) return ['status'=>200,'body'=>['resourceType'=>'Patient','id'=>'patient-1','name'=>[['given'=>['Erika'],'family'=>'Musterfrau']]]];
+        if (str_contains($url,'/Patient?')) {
+            if ($this->patientUnavailable) throw new TransportError('Zertifikat-Testfehler (cURL 60)',false);
+            return ['status'=>200,'body'=>['resourceType'=>'Patient','id'=>'patient-1','name'=>[['given'=>['Erika'],'family'=>'Musterfrau']]]];
+        }
         if (str_ends_with($url,'/metadata')) return ['status'=>200,'body'=>['resourceType'=>'CapabilityStatement','rest'=>[['mode'=>'server','resource'=>[['type'=>'Observation','conditionalCreate'=>$this->conditional]]]]]];
         if (str_contains($url,'/Observation?')) return ['status'=>200,'body'=>['resourceType'=>'Bundle','entry'=>$this->existingRecord && $this->record ? [['resource'=>['id'=>'record-1']+$this->record]] : []]];
         if ($method==='POST') {
@@ -68,6 +72,14 @@ final class FakeHttp extends HttpClient {
 
 $dirs=[];
 try {
+    // Echter cURL-Fehlerpfad ohne Netz: HTTP wird durch HTTPS-only vor dem Verbinden abgelehnt.
+    try {
+        (new HttpClient())->request('GET','http://127.0.0.1/?token=transport-secret',[]);
+        throw new RuntimeException('Unsicheres HTTP-Protokoll akzeptiert');
+    } catch (TransportError $e) {
+        check(!$e->ambiguous && str_contains($e->getMessage(),'cURL 1'),'cURL-Fehlerpfad beschädigt');
+        check(!str_contains($e->getMessage(),'transport-secret'),'URL-Geheimnis in cURL-Fehler');
+    }
     check(Money::cents('10,01',100000)===1001,'Cent-Berechnung');
     foreach (['1.001','1e3','-1','0','1001.00'] as $amount) rejects(fn()=>Money::cents($amount,100000),'Ungültiger Betrag akzeptiert');
     $cfg=configuration();$dirs[]=$cfg->get('app','state_dir');$app=new App($cfg);$app->db->migrate();
@@ -110,6 +122,12 @@ try {
     }
     check(count($http->calls)===0,'FHIR-Ablehnung löst HTTP-Aufruf aus');
     check((int)$app->db->query('SELECT COUNT(*) FROM visits')->fetchColumn()===0,'FHIR-Ablehnung erzeugt Besuch');
+    $http->patientUnavailable=true;
+    $problem=rejectedProblem(fn()=>visit($app),'FHIR-Verbindungsfehler nicht als Nutzermeldung behandelt');
+    check($problem->http===502 && str_contains($problem->getMessage(),'cURL 60'),'FHIR-Verbindungsursache verdeckt');
+    check(!str_contains($problem->getMessage(),'secret-token'),'FHIR-Token in Verbindungsfehler');
+    check((int)$app->db->query('SELECT COUNT(*) FROM visits')->fetchColumn()===0,'Verbindungsfehler erzeugt Besuch');
+    $http->patientUnavailable=false;
     [$v,$b]=visit($app);$input=prepare($app,$v);
     $http->startLost=true;$http->paymentFound=false;$p=$app->start($v,$input);check($p['payment_status']==='unknown','Verlorene Startantwort als Fehler interpretiert');
     $app->start($v,$input);check($http->posts('api.sumup.com')===1,'SumUp trotz gleicher ID erneut gestartet');

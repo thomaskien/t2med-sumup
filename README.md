@@ -1,13 +1,8 @@
-# achtung noch total ungetestet!
-
-
-
-
 # kienzle-sumup für T2med
 
 Eine kleine PHP-Webanwendung für Kartenzahlungen am SumUp Solo. Leistungen auswählen,
 Betrag ans Terminal senden und nach erfolgreicher Zahlung bewusst in der Patientenakte
-dokumentieren. **Version 0.1**, von Dr. Thomas Kienzle.
+dokumentieren. **Version 1.0**, von Dr. Thomas Kienzle.
 
 ## Ablauf
 
@@ -15,8 +10,8 @@ dokumentieren. **Version 0.1**, von Dr. Thomas Kienzle.
 2. Leistungen auswählen oder einen sonstigen Betrag eingeben.
 3. **Mit Karte kassieren** anklicken und Zahlung am Solo durchführen.
 4. Die Seite zeigt den von SumUp bestätigten Zahlungsstatus.
-   Bei Bedarf **Zahlungsbeleg drucken** anklicken: Ein eigenes Fenster lädt die
-   SumUp-Belegdaten und öffnet den Druckdialog für Praxisdrucker oder PDF.
+   Bei Bedarf **Zahlungsbeleg / PDF** anklicken: Der Originalbeleg von SumUp wird
+   als PDF geöffnet und kann gedruckt oder gespeichert werden.
 5. **Dokumentation in der Akte** schreibt einen Freitext-Eintrag und schließt den Vorgang ab.
    Das Fenster wird anschließend nach Möglichkeit geschlossen; andernfalls bleibt die
    Abschlussmeldung sichtbar und das Fenster kann manuell geschlossen werden.
@@ -25,20 +20,32 @@ dokumentieren. **Version 0.1**, von Dr. Thomas Kienzle.
 anlegen, bearbeiten und löschen. Löschen entfernt sie aus der Auswahl; gespeicherte
 Zahlungen behalten ihre damaligen Bezeichnungen und Preise.
 
-**Beleglink / E-Mail** ruft einen von SumUp zur Zahlung gelieferten Beleglink ab,
-sofern vorhanden. Er lässt sich öffnen, kopieren oder über **E-Mail vorbereiten**
-im vorhandenen Mailprogramm weitergeben. Die bevorzugte aktuelle E-Mail-Adresse
-wird bei diesem Klick aus t2med geladen und kann vor dem Versand geändert werden.
-Das Mailprogramm versendet die Nachricht; die Anwendung übermittelt keine
-Empfängeradresse an SumUp und benötigt keine SMTP-Konfiguration. Nach Abschluss
-der Aktendokumentation ist der t2med-Zugriff beendet; dann kann die Adresse nur
-noch manuell eingetragen werden. Wenn SumUp keinen Link liefert, bleibt der
-eigene Druckbeleg verfügbar. Im Testmodus ist dieser deutlich als Testbeleg markiert.
+**Beleglink / E-Mail** zeigt den von SumUp gelieferten Originalbeleg-Link sowie
+**PDF herunterladen**. Die PDF wird aus der SVG (alternativ PNG) des Originalbelegs
+erzeugt. Voraussetzung ist ein gültiger Beleglink in der geprüften Transaktion.
+Die frühere zusätzliche JSON-Belegabfrage wird nicht mehr verwendet.
 
-Belegabruf, Drucken und Mailvorbereitung lösen weder eine neue Zahlung noch einen
-Akteneintrag aus und können wiederholt werden. Belege werden nur innerhalb der
-berechtigten Browsersitzung für erfolgreich bestätigte Zahlungen geladen.
-Der SumUp-Key benötigt für die Belegdaten `receipts.read` oder `transactions.history`.
+Für **PDF per E-Mail senden** im Server-Installer den E-Mail-Versand aktivieren und
+SMTP-Server, Port, Verschlüsselung (`starttls`, meist 587, oder `smtps`, meist 465),
+Benutzername, Passwort und Absender eintragen. Das Passwort wird verdeckt abgefragt;
+die Daten bleiben unter `[mail]` in der geschützten TOML-Datei. Bestehende Einstellungen
+bleiben bei Updates erhalten. Ohne SMTP bleibt der PDF-Download nutzbar.
+
+Die bevorzugte aktuelle E-Mail-Adresse wird beim Öffnen des Bereichs aus t2med
+geladen und kann vor dem Versand geändert werden. Nur der Klick auf **PDF per
+E-Mail senden** sendet den PDF-Anhang über den konfigurierten Mailserver. Es läuft
+kein Hintergrundversand. Die Bestätigung bedeutet, dass der Mailserver die Nachricht
+angenommen hat; die Zustellung an das Postfach kann später scheitern. Bei einer
+verlorenen Antwort wird derselbe Versandversuch geprüft; ein bewusster erneuter
+Versand ist möglich. Nach Abschluss der Aktendokumentation ist der t2med-Zugriff
+beendet; dann kann die Adresse nur noch manuell eingetragen werden.
+
+Belegabruf, Drucken und E-Mail-Versand verändern weder Zahlung noch Akteneintrag.
+Der Browser kann nur auf Belege seiner erfolgreich bestätigten Zahlungen zugreifen.
+Der Originalbeleg wird ohne API-Key vom geprüften SumUp-Beleglink geladen und lokal
+mit `rsvg-convert` in PDF umgewandelt. Konverter und PHPMailer kommen als
+Distributionspakete (`librsvg2-bin`, `libphp-phpmailer`) über den Installer.
+Im Testmodus wird ein markierter Testbeleg erzeugt und kein SMTP-Versand ausgeführt.
 
 Kein Hintergrundjob und kein Webhook. Bei geschlossenem Browser findet keine weitere
 Statusabfrage oder automatische Dokumentation statt. Erneut aus demselben t2med-Kontext
@@ -116,7 +123,7 @@ Er enthält `client.json` mit Serveradresse, Starter-Schlüssel und Zertifikat-F
 sowie das öffentliche Serverzertifikat. **Diesen Ordner nicht ins Repository oder unter
 den Webroot legen.** Er ist ausschließlich für berechtigte Praxisarbeitsplätze vorgesehen.
 
-Die Installer laden den passenden fertigen Starter aus GitHub Release `v0.1` und prüfen
+Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.0` und prüfen
 seine SHA-256-Prüfsumme. Python, Go und PHP werden auf dem Arbeitsplatz nicht benötigt.
 Alternativ vorab die Release-Dateien und `SHA256SUMS` in diesen Ordner legen.
 
@@ -216,6 +223,10 @@ Tabellen, einzeilige Strings, boolesche Werte, positive Dezimal-Ganzzahlen und e
 Arrays aus doppelt zitierten Strings. Beispiel: `config/kienzle-sumup.example.toml`.
 Kein INI-Parser, keine automatische Typumwandlung bei Geldbeträgen.
 
+Bei der ersten Einrichtung der t2med-Anbindung übernimmt eine leere Eingabe beim
+FHIR API-Key den hinterlegten Demo-Key. Ein eingegebener eigener Schlüssel hat Vorrang;
+bei Updates behält Enter den bereits gespeicherten Schlüssel.
+
 Nach manuellen Änderungen den Installer erneut ausführen, damit Apache-Port und
 Clientkonfiguration zur TOML passen. Bestehende API-Schlüssel, Verschlüsselungsschlüssel,
 Datenbank und Serverzertifikat bleiben bei gewöhnlichen Updates erhalten. Nach Änderung
@@ -234,7 +245,8 @@ Verschlüsselungsschlüssel wird zum Lesen offener Sitzungstokens benötigt.
 
 ## Lokaler Test ohne Terminal und t2med
 
-PHP 8.1+ mit `curl`, `pdo_sqlite`, `mbstring` und `sodium`:
+PHP 8.1+ mit `curl`, `pdo_sqlite`, `mbstring` und `sodium`; für PDFs außerdem
+`rsvg-convert` (Linux: `librsvg2-bin`, macOS: Homebrew `librsvg`):
 
 ```bash
 php scripts/dev.php
@@ -258,7 +270,7 @@ bash scripts/build-client.sh
 ```
 
 GitHub Actions prüft diese Abläufe und baut die Starter für Windows, macOS und Linux.
-Ein Tag `v0.1` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
+Ein Tag `v1.0` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
 
 ## Stand der Integration
 

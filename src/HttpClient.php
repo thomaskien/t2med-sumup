@@ -5,6 +5,16 @@ namespace KienzleSumup;
 class HttpClient {
     /** Keine Weiterleitungen: Zugangsdaten verlassen nie das konfigurierte Ziel. */
     public function request(string $method, string $url, array $headers, ?array $body = null, string $caFile = '', bool $pinCertificate = false): array {
+        $result = $this->transfer($method, $url, $headers, $body, $caFile, $pinCertificate);
+        try { $json = $result['body'] === '' ? null : json_decode($result['body'], true, 128, JSON_THROW_ON_ERROR); }
+        catch (\JsonException) { $json = null; }
+        return ['status' => $result['status'], 'body' => $json];
+    }
+    /** Originalbeleg abrufen, ausdrücklich ohne API-Key oder FHIR-Zugangsdaten. */
+    public function download(string $url): array {
+        return $this->transfer('GET', $url, ['Accept: image/svg+xml, image/png'], null, '', false);
+    }
+    private function transfer(string $method, string $url, array $headers, ?array $body, string $caFile, bool $pinCertificate): array {
         $curl = curl_init($url); $raw = ''; $tooLarge = false;
         $options = [CURLOPT_CUSTOMREQUEST => $method, CURLOPT_HTTPHEADER => $headers,
             CURLOPT_CONNECTTIMEOUT => 5, CURLOPT_TIMEOUT => 20, CURLOPT_FOLLOWLOCATION => false,
@@ -47,9 +57,7 @@ class HttpClient {
             // Keine curl_error()-Rohmeldung: diese kann URLs und Zugangsdaten enthalten.
             throw new TransportError($message . " (cURL $errno)", !$safe, $status);
         }
-        try { $json = $raw === '' ? null : json_decode($raw, true, 128, JSON_THROW_ON_ERROR); }
-        catch (\JsonException) { $json = null; }
-        return ['status' => $status, 'body' => $json];
+        return ['status' => $status, 'body' => $raw];
     }
     private static function certificatePin(string $path): string {
         $error = 'Zertifikatsbindung benötigt genau ein lesbares öffentliches t2med-Serverzertifikat in ca_file.';

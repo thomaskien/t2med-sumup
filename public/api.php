@@ -44,6 +44,7 @@ try {
             'cancel' => $app->cancel($visit, App::string($input, 'payment_id', 32)),
             'document' => $app->document($visit, App::string($input, 'payment_id', 32)),
             'receipt_share' => $app->receiptShare($visit, App::string($input, 'payment_id', 32)),
+            'receipt_email' => $app->receiptEmail($visit, $input),
             'service_save' => (function () use ($app, $visit, $input) { $app->saveService($visit, $input); return ['ok' => true]; })(),
             'service_delete' => (function () use ($app, $visit, $input) { $app->deleteService($visit, App::string($input, 'id', 32)); return ['ok' => true]; })(),
             'mock' => (function () use ($app, $visit, $input) { $app->mock($visit, $input); return ['ok' => true]; })(),

@@ -51,6 +51,17 @@ final class Config {
         }
         $entry = $this->get('fhir', 'entry_code', 'ZAHLUNG');
         if (!is_string($entry) || $entry === '' || mb_strlen($entry) > 20) throw new \RuntimeException('Aktenkürzel muss 1–20 Zeichen lang sein.');
+        if (!is_bool($this->get('mail', 'enabled', false))) throw new \RuntimeException('mail.enabled muss true oder false sein.');
+        if ($this->get('mail', 'enabled', false)) {
+            if (!is_string($this->get('mail', 'host')) || !preg_match('/^[A-Za-z0-9.-]+$/D', $this->get('mail', 'host'))) throw new \RuntimeException('SMTP-Hostname ist ungültig.');
+            if (!is_int($this->get('mail', 'port')) || $this->get('mail', 'port') < 1 || $this->get('mail', 'port') > 65535) throw new \RuntimeException('SMTP-Port ist ungültig.');
+            if (!in_array($this->get('mail', 'encryption'), ['starttls', 'smtps'], true)) throw new \RuntimeException('SMTP-Verschlüsselung muss starttls oder smtps sein.');
+            foreach (['from_address', 'from_name', 'username', 'password'] as $key) {
+                if (!is_string($this->get('mail', $key, '')) || preg_match('/[\r\n]/', $this->get('mail', $key, ''))) throw new \RuntimeException('SMTP-Konfiguration ist ungültig: ' . $key);
+            }
+            if (!filter_var($this->get('mail', 'from_address'), FILTER_VALIDATE_EMAIL)) throw new \RuntimeException('SMTP-Absenderadresse ist ungültig.');
+            if ($this->get('mail', 'username', '') !== '' && $this->get('mail', 'password', '') === '') throw new \RuntimeException('SMTP-Passwort fehlt.');
+        }
     }
 
     public function get(string $section, string $key, mixed $default = null): mixed {

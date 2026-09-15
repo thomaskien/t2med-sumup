@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
-use KienzleSumup\{App,Config,HttpClient,Money,Problem,TransportError};
+use KienzleSumup\{App,Config,HttpClient,Money,Problem,TransportError,ReceiptMailer};
 
 function check(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function rejects(callable $fn, string $message): void { try { $fn(); } catch (Problem) { return; } throw new RuntimeException($message); }
@@ -43,14 +43,10 @@ final class FakeHttp extends HttpClient {
     public ?array $record=null;
     public string $reference='';
     public int $receiptStatus=200;
-    public array $receiptChanges=[];
     public array $links=[];
     public function request(string $method,string $url,array $headers,?array $body=null,string $caFile='',bool $pinCertificate=false):array {
         $this->calls[]=[$method,$url,$headers,$body];
         if (str_contains($url,'api.sumup.com')) {
-            if (str_contains($url,'/v1.1/receipts/')) return ['status'=>$this->receiptStatus,'body'=>[
-                'transaction_data'=>array_replace(['transaction_id'=>'transaction-1','merchant_code'=>'MTEST','amount'=>'16.00','currency'=>'EUR','status'=>'SUCCESSFUL','timestamp'=>'2026-09-15T10:00:00Z','transaction_code'=>'TTEST','card'=>['type'=>'VISA','last_4_digits'=>'1234','number'=>'must-not-leak']],$this->receiptChanges),
-                'merchant_data'=>['merchant_profile'=>['merchant_code'=>'MTEST','business_name'=>'Musterpraxis','address'=>['address_line1'=>'Teststraße 1','post_code'=>'12345','city'=>'Musterstadt']]]]];
             if ($method==='POST' && str_ends_with($url,'/checkout')) {
                 $this->reference=$body['affiliate']['foreign_transaction_id'];
                 if ($this->startLost) throw new TransportError('Verbindung unterbrochen.',true);
@@ -74,9 +70,22 @@ final class FakeHttp extends HttpClient {
         }
         throw new RuntimeException('Unerwarteter Testaufruf');
     }
+    public function download(string $url):array {
+        $this->calls[]=['GET',$url,[],null];
+        return ['status'=>$this->receiptStatus,'body'=>'<svg xmlns="http://www.w3.org/2000/svg" width="320" height="220"><rect width="100%" height="100%" fill="white"/><text x="20" y="45" font-family="sans-serif" font-size="22">SumUp-Testbeleg</text><text x="20" y="95" font-family="sans-serif" font-size="30">16,00 EUR</text><text x="20" y="145" font-size="16">VISA **** 1234</text></svg>'];
+    }
     public function posts(string $host):int {return count(array_filter($this->calls,fn($c)=>$c[0]==='POST' && str_contains($c[1],$host)));}
 }
 
+final class FakeMailer extends ReceiptMailer {
+    public int $sent=0;
+    public bool $lost=false;
+    public function send(string $email,string $pdf,string $reference):void {
+        check(str_starts_with($pdf,'%PDF-'),'Mail-Anhang ist kein PDF');
+        $this->sent++;
+        if($this->lost) throw new Problem('Versandantwort verloren.',502);
+    }
+}
 $dirs=[];
 try {
     // Echter cURL-Fehlerpfad ohne Netz: HTTP wird durch HTTPS-only vor dem Verbinden abgelehnt.
@@ -101,7 +110,7 @@ try {
     [$v2,$b2]=visit($app,'other');rejects(fn()=>$app->visit($b2,$v['id']),'Fremder Browser erhält Patientenkontext');
     rejects(fn()=>$app->start($v2,['request_id'=>App::id(),'services'=>[],'manual_amount'=>'1']),'Terminal-Doppelbelegung');
     $app->mock($v,['payment_id'=>$p['id'],'status'=>'successful']);
-    check($app->receipt($v,$p['id'])['mock']===true,'Testbeleg nicht markiert');
+    check(str_starts_with($app->receipt($v,$p['id']),'%PDF-'),'Testbeleg ist kein PDF');
     rejects(fn()=>$app->receipt($v2,$p['id']),'Beleg für fremden Vorgang zugänglich');
     check($app->poll($v,$p['id'])['payment_status']==='successful','Mockzahlung nicht erfolgreich');
     check((int)$app->db->query('SELECT COUNT(*) FROM mock_records')->fetchColumn()===0,'Polling dokumentiert automatisch');
@@ -148,17 +157,13 @@ try {
     check($app->poll($v,$p['id'])['payment_status']==='successful','Wiederabgleich fehlgeschlagen');
     $paymentBefore=$app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']]);
     $postsBefore=$http->posts('api.sumup.com');$fhirBefore=$http->posts('t2med.test');
-    $receipt=$app->receipt($v,$p['id']);$app->receipt($v,$p['id']);
-    check($receipt['amount_cents']===1600 && $receipt['card_last4']==='1234' && !$receipt['mock'],'Zahlungsbeleg falsch');
-    check(!str_contains(json_encode($receipt),'must-not-leak'),'Unzulässige Kartendaten im Beleg');
-    foreach (['transaction_id'=>'wrong','merchant_code'=>'wrong','amount'=>'0.01','currency'=>'USD','status'=>'REFUNDED'] as $key=>$value) {
-        $http->receiptChanges=[$key=>$value];rejects(fn()=>$app->receipt($v,$p['id']),'Abweichender Beleg akzeptiert: '.$key);
-    }
-    $http->receiptChanges=[];$http->receiptStatus=404;
-    rejects(fn()=>$app->receipt($v,$p['id']),'Fehlender Beleg akzeptiert');
-    $http->receiptStatus=200;check($app->receipt($v,$p['id'])['amount_cents']===1600,'Belegabruf nicht wiederholbar');
-    $url='https://receipts-ng.sumup.com/v0.1/receipts/transaction-1?mid=MTEST&format=png';
+    $url='https://receipts-ng.sumup.com/v0.1/receipts/transaction-1?mid=MTEST&format=svg';
     $http->links=[['rel'=>'receipt','href'=>$url]];
+    $receipt=$app->receipt($v,$p['id']);$app->receipt($v,$p['id']);
+    check(str_starts_with($receipt,'%PDF-'),'Zahlungsbeleg ist kein PDF');
+    $http->wrongAmount=true;rejects(fn()=>$app->receipt($v,$p['id']),'Beleg trotz falscher Transaktionssumme');$http->wrongAmount=false;
+    $http->receiptStatus=404;rejects(fn()=>$app->receipt($v,$p['id']),'Fehlender Originalbeleg akzeptiert');
+    $http->receiptStatus=200;check(str_starts_with($app->receipt($v,$p['id']),'%PDF-'),'Belegabruf nicht wiederholbar');
     $share=$app->receiptShare($v,$p['id']);check($share['url']===$url && $share['email']==='erika@example.invalid','Beleglink oder bevorzugte t2med-E-Mail fehlt');
     foreach (['https://evil.example/receipt','https://receipts-ng.sumup.com.evil.example/x','javascript:alert(1)','https://secret@receipts-ng.sumup.com/x','https://api.sumup.com/v1.1/receipts/x'] as $bad) {
         $http->links=[['rel'=>'receipt','href'=>$bad]];check($app->receiptShare($v,$p['id'])['url']==='','Unzulässiger Beleglink');
@@ -167,6 +172,23 @@ try {
     check($app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']])===$paymentBefore,'Belegabruf verändert Zahlung');
     check($http->posts('api.sumup.com')===$postsBefore && $http->posts('t2med.test')===$fhirBefore,'Belegabruf erzeugt Zahlung oder Dokumentation');
     echo "OK: Belegzuordnung, Wiederholung, Beleglink und E-Mail-Vorschlag ohne Schreibvorgänge.\n";
+    // Migration einer bestehenden Datenbank erhält Zahlung und ergänzt Versandstatus.
+    $app->db->query('DROP TABLE receipt_emails');$app->db->query('PRAGMA user_version=1');$app->db->migrate();
+    check($app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']])===$paymentBefore,'Migration verändert Zahlung');
+    $values=$cfg->values;$values['mail']=['enabled'=>true,'host'=>'smtp.example.invalid','port'=>587,'encryption'=>'starttls','username'=>'user','password'=>'secret','from_address'=>'praxis@example.invalid','from_name'=>'Musterpraxis'];
+    $mailConfig=new Config($values);$mailer=new FakeMailer($mailConfig);$mailApp=new App($mailConfig,$http,$mailer);
+    $http->links=[['rel'=>'receipt','href'=>$url]];
+    $mailInput=['payment_id'=>$p['id'],'email'=>'erika@example.invalid','request_id'=>App::id()];
+    check($mailApp->receiptEmail($v,$mailInput)['status']==='sent','Versand fehlgeschlagen');
+    $mailApp->receiptEmail($v,$mailInput);check($mailer->sent===1,'Gleicher Versand doppelt gesendet');
+    $changed=$mailInput;$changed['email']='other@example.invalid';rejects(fn()=>$mailApp->receiptEmail($v,$changed),'Versandschlüssel mit anderem Empfänger');
+    $mailer->lost=true;$mailInput['request_id']=App::id();
+    check($mailApp->receiptEmail($v,$mailInput)['status']==='unknown','Verlorene Versandantwort als sicherer Erfolg');
+    $mailApp->receiptEmail($v,$mailInput);check($mailer->sent===2,'Unklarer Versand blind wiederholt');
+    $mailer->lost=false;$mailInput['request_id']=App::id();check($mailApp->receiptEmail($v,$mailInput)['status']==='sent','Bewusster Neuversand nicht möglich');
+    check($app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']])===$paymentBefore,'Mailversand verändert Zahlung');
+    check($http->posts('t2med.test')===$fhirBefore,'Mailversand schreibt Akteneintrag');
+    echo "OK: PDF-Anhang, Migration, Versandwiederholung und verlorene SMTP-Antwort.\n";
     foreach ($http->calls as $call) if(str_contains($call[1],'api.sumup.com')) {
         $json=json_encode($call[3]);check(!str_contains($json,'Attest')&&!str_contains($json,'Erika')&&!str_contains($json,'patient-1'),'Patientendaten an SumUp');
     }

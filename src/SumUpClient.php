@@ -32,57 +32,18 @@ final class SumUpClient {
         $code = $response['status'];
         if ($code < 200 || $code >= 300) throw new TransportError($message . " (HTTP $code)", $code >= 500 || $code === 408 || $code < 400, $code);
     }
-    public function receipt(array $payment): array {
+    public function receipt(array $payment): string {
         if ($this->config->get('sumup', 'mode') === 'mock') {
-            return ['mock' => true, 'amount_cents' => $payment['amount_cents'], 'reference' => $payment['reference'],
-                'merchant_name' => 'Musterpraxis', 'merchant_address' => "Musterstraße 1\n12345 Musterstadt", 'merchant_code' => 'TEST',
-                'date' => $this->receiptDate('@' . $payment['paid_at']), 'transaction_id' => 'mock-' . $payment['id'],
-                'transaction_code' => 'TESTBELEG', 'receipt_no' => '', 'card_type' => 'Testkarte', 'card_last4' => '0000'];
+            $amount = htmlspecialchars(Money::format($payment['amount_cents']), ENT_XML1, 'UTF-8');
+            $reference = htmlspecialchars($payment['reference'], ENT_XML1, 'UTF-8');
+            return ReceiptPdf::convert('<svg xmlns="http://www.w3.org/2000/svg" width="380" height="240"><rect width="100%" height="100%" fill="white"/><g font-family="sans-serif" fill="black"><text x="20" y="35" font-size="19">TESTBELEG - keine echte Zahlung</text><text x="20" y="90" font-size="28">'.$amount.'</text><text x="20" y="130" font-size="14">Simulierte Kartenzahlung</text><text x="20" y="170" font-size="10">'.$reference.'</text></g></svg>');
         }
-        $id = $payment['transaction_id'] ?? '';
-        if (!is_string($id) || $id === '') throw new Problem('Für diese Zahlung fehlt die SumUp-Transaktions-ID.', 409);
-        $merchant = $this->config->get('sumup', 'merchant_code');
-        try {
-            $response = $this->request('GET', '/v1.1/receipts/' . rawurlencode($id) . '?' . http_build_query(['mid' => $merchant]));
-        } catch (TransportError) {
-            throw new Problem('Der Zahlungsbeleg konnte nicht von SumUp geladen werden. Bitte erneut versuchen.', 502);
-        }
-        $status = $response['status'];
-        if ($status === 404) throw new Problem('SumUp stellt den Beleg noch nicht bereit. Bitte kurz warten und erneut versuchen.', 502);
-        if ($status === 401 || $status === 403) throw new Problem('Der SumUp-API-Key darf keine Belege abrufen. Bitte die Berechtigung receipts.read oder transactions.history prüfen.', 502);
-        if ($status !== 200) throw new Problem('Der Zahlungsbeleg konnte nicht geladen werden. Bitte erneut versuchen. (HTTP ' . $status . ')', 502);
-        $body = $response['body'];
-        $data = is_array($body) ? ($body['transaction_data'] ?? null) : null;
-        $amount = is_array($data) ? ($data['amount'] ?? null) : null;
-        if (!is_array($data) || ($data['transaction_id'] ?? null) !== $id ||
-            ($data['merchant_code'] ?? null) !== $merchant || ($data['currency'] ?? null) !== 'EUR' ||
-            ($data['status'] ?? null) !== 'SUCCESSFUL' ||
-            (!is_string($amount) && !is_int($amount) && !is_float($amount)) ||
-            !preg_match('/^\d{1,9}(?:\.\d{1,2})?$/D', (string)$amount) ||
-            abs((float)$amount * 100 - $payment['amount_cents']) > 0.001) {
-            throw new Problem('Der SumUp-Beleg passt nicht eindeutig zur erfolgreichen Zahlung.', 502);
-        }
-        $profile = $body['merchant_data']['merchant_profile'] ?? [];
-        if (!is_array($profile)) $profile = [];
-        if (isset($profile['merchant_code']) && $profile['merchant_code'] !== $merchant) throw new Problem('Der Händler im SumUp-Beleg passt nicht zur Zahlung.', 502);
-        $address = is_array($profile['address'] ?? null) ? $profile['address'] : [];
-        $card = is_array($data['card'] ?? null) ? $data['card'] : [];
-        $last4 = self::receiptText($card, 'last_4_digits');
-        // Nur die für den Beleg benötigten Felder weitergeben, keine Rohantwort.
-        return ['mock' => false, 'amount_cents' => $payment['amount_cents'], 'reference' => $payment['reference'],
-            'merchant_name' => self::receiptText($profile, 'business_name') ?: $merchant,
-            'merchant_code' => $merchant,
-            'merchant_address' => implode("\n", array_filter([self::receiptText($address, 'address_line1'),
-                self::receiptText($address, 'address_line2'), trim(self::receiptText($address, 'post_code') . ' ' . self::receiptText($address, 'city')),
-                self::receiptText($address, 'country_native_name') ?: self::receiptText($address, 'country')])),
-            'date' => $this->receiptDate(self::receiptText($data, 'timestamp')),
-            'transaction_id' => $id, 'transaction_code' => self::receiptText($data, 'transaction_code'),
-            'receipt_no' => self::receiptText($data, 'receipt_no'), 'card_type' => self::receiptText($card, 'type'),
-            'card_last4' => preg_match('/^\d{4}$/D', $last4) ? $last4 : ''];
-    }
-    private static function receiptText(array $data, string $key): string {
-        $value = $data[$key] ?? '';
-        return is_string($value) ? mb_substr(trim($value), 0, 300) : '';
+        $url = $this->receiptLink($payment);
+        if ($url === '') throw new Problem('SumUp liefert für diese Zahlung keinen Originalbeleg-Link.', 502);
+        try { $response = $this->http->download($url); }
+        catch (TransportError) { throw new Problem('Der SumUp-Originalbeleg konnte nicht geladen werden. Bitte erneut versuchen.', 502); }
+        if ($response['status'] !== 200) throw new Problem('Der SumUp-Originalbeleg ist noch nicht verfügbar. Bitte erneut versuchen.', 502);
+        return ReceiptPdf::convert($response['body']);
     }
     public function receiptLink(array $payment): string {
         if ($this->config->get('sumup', 'mode') === 'mock') return '';
@@ -113,11 +74,6 @@ final class SumUpClient {
             return $url;
         }
         return '';
-    }
-    private function receiptDate(string $value): string {
-        if ($value === '') return '';
-        try { return (new \DateTimeImmutable($value))->setTimezone(new \DateTimeZone($this->config->get('app', 'timezone')))->format('d.m.Y H:i T'); }
-        catch (\Exception) { return ''; }
     }
     public function cancel(array $payment): void {
         if ($this->config->get('sumup', 'mode') === 'mock') return;

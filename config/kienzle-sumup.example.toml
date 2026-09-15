@@ -32,3 +32,13 @@ entry_code = "ZAHLUNG"
 # enthalten, das direkt vom t2med-Server bezogen wurde (nicht CA-Bundle).
 ca_file = ""
 pin_certificate = false
+
+[mail]
+enabled = false
+host = ""
+port = 587
+encryption = "starttls"
+username = ""
+password = ""
+from_address = ""
+from_name = ""

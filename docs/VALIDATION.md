@@ -1,17 +1,25 @@
-# Prüfung von Version 0.1
+# Prüfung von Version 1.0
 
-Stand: 13. September 2026.
+Stand: 15. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
+vom 13. September sind unten gesondert aufgeführt.
 
-Belegerweiterung vom 15. September 2026: PHP-Kernprüfungen und Syntaxprüfungen
-bestanden. Ergänzt sind Belegzuordnung nach Transaktion, Händler, Betrag und Status,
-wiederholter Abruf ohne neue Zahlung/Aktendokumentation, erlaubte SumUp-Beleglinks
-und bevorzugte E-Mail-Adresse aus FHIR. Im separaten Chrome-Testbrowser geprüft:
-Button erst nach Erfolg, eigenes Druckfenster, Testbeleg-Kennzeichnung auch im
-Drucklayout, Abweisung ohne Browsersitzung sowie Linkanzeige und E-Mail-Vorschlag.
-Browser-Linkdaten waren kontrollierte Testantworten. Es wurden keine E-Mails
-versendet und keine echten Beleglinks geöffnet. Tatsächliche Bereitstellung eines
-Beleglinks und Live-Belegdaten des konkreten SumUp-Kontos müssen beim Anwender
-geprüft werden; es werden keine Links aus Transaktions-IDs erfunden.
+PDF-/SMTP-Erweiterung vom 15. September 2026: PHP-Kernprüfungen und Syntaxprüfungen
+bestanden. Geprüft sind Originalbeleg-Abruf über einen erlaubten SumUp-Link der
+zugeordneten Transaktion, PDF-Erzeugung mit librsvg, erneuter Abruf nach Fehlern,
+bevorzugte E-Mail-Adresse aus FHIR und unveränderte Zahlungs-/Dokumentationsdaten.
+Die Datenbankmigration erhält bestehende Zahlungen. Kontrollierte Mailer-Antworten
+prüfen die Wiederholung desselben Versandschlüssels, eine verlorene Versandantwort
+und einen bewusst neu gestarteten Versand. `tests/mail-mime.php` bestätigt mit
+PHPMailer 6.9.3 den richtigen Empfänger, Betreff und unveränderten PDF-Anhang, ohne
+eine SMTP-Verbindung aufzubauen.
+
+Im separaten Chrome-Testbrowser geprüft: Belegbutton erst nach Zahlungserfolg,
+PDF-Antwort und sichtbarer PDF-Inhalt im Browser, Download, E-Mail-Vorschlag,
+simulierter Versand und Abweisung ohne Browsersitzung. Die erzeugte Test-PDF wurde
+zusätzlich mit Poppler gerendert und visuell kontrolliert. Es wurden keine echten
+E-Mails versendet. Original-SVG des konkreten SumUp-Kontos und SMTP-Versand mit den
+Zugangsdaten des Anwenders müssen dort noch geprüft werden. Der Anwender bestätigt
+bereits den funktionierenden SVG-Download über den SumUp-Beleglink.
 
 Ergänzung vom 15. September 2026: `python3 tests/tls-pin.py` mit echten lokalen
 TLS-Verbindungen bestanden. Ein selbstsigniertes V1-Zertifikat ohne Erweiterungen/SAN

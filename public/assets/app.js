@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const euro = cents => new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'}).format(cents / 100);
 let state = null, visitId = new URL(location.href).searchParams.get('v'), csrf = '', timer = null, busy = false;
 let selected = new Set(), retrySelection = false, startRequest = null;
-let receiptShare = null;
+let receiptShare = null, receiptMailRequest = null;
 function message(text='') { $('message').textContent = text; $('message').hidden = !text; }
 async function api(action, data={}) {
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 75000);
@@ -58,7 +58,7 @@ function renderPayment() {
   $('selection').hidden=!!showing; $('payment').hidden=!showing;
   if (showing) manage(false);
   for (const id of ['document','receipt','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
-  if(!showing || p.payment_status!=='successful' || receiptShare?.paymentId!==p.id) { $('receipt-share-panel').hidden=true; receiptShare=null; }
+  if(!showing || p.payment_status!=='successful' || receiptShare?.paymentId!==p.id) { $('receipt-share-panel').hidden=true; receiptShare=null; receiptMailRequest=null; }
   clearTimeout(timer);
   if (!showing) return;
   $('receipt').hidden=p.payment_status!=='successful';
@@ -126,10 +126,14 @@ $('receipt-share').onclick=()=>run(async()=>{
   receiptShare={...result,paymentId};
   $('receipt-share-panel').hidden=false;
   $('receipt-share-message').textContent=result.message;
-  $('receipt-share-details').hidden=!result.url;
+  $('receipt-share-details').hidden=false;
+  $('receipt-original-link').hidden=!result.url;
+  $('receipt-pdf-download').href='/receipt.php?'+new URLSearchParams({v:visitId,p:paymentId,download:'1'});
   $('receipt-link').value=result.url;
   if(result.url) $('receipt-open').href=result.url; else $('receipt-open').removeAttribute('href');
   $('receipt-email').value=result.email;
+  $('receipt-email-form').hidden=!state.mail_enabled;
+  $('receipt-mail-unconfigured').hidden=state.mail_enabled;
 });
 $('receipt-copy').onclick=()=>run(async()=>{
   if(!receiptShare?.url) return;
@@ -138,11 +142,19 @@ $('receipt-copy').onclick=()=>run(async()=>{
 });
 $('receipt-email-form').onsubmit=e=>{
   e.preventDefault();
-  if(busy || !receiptShare?.url || receiptShare.paymentId!==state.payment.id) return;
+  if(busy || !state.mail_enabled || receiptShare?.paymentId!==state.payment.id) return;
   const email=$('receipt-email').value.trim();
   if(!email || /[\r\n]/.test(email) || !$('receipt-email-form').reportValidity()) return;
-  const body='Guten Tag,\r\n\r\nhier finden Sie Ihren Zahlungsbeleg über '+euro(state.payment.amount_cents)+':\r\n'+receiptShare.url+'\r\n\r\nMit freundlichen Grüßen';
-  location.href='mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent('Ihr Zahlungsbeleg')+'&body='+encodeURIComponent(body);
+  run(async()=>{
+    if(!receiptMailRequest || receiptMailRequest.email!==email) receiptMailRequest={request_id:crypto.randomUUID(),email,payment_id:state.payment.id};
+    $('receipt-mail-status').textContent='PDF wird erstellt und E-Mail versendet …';
+    try {
+      const result=await api('receipt_email',receiptMailRequest);
+      $('receipt-mail-status').textContent=result.message;
+      $('receipt-email-send').textContent='PDF erneut per E-Mail senden';
+      receiptMailRequest=null;
+    } catch(error) { $('receipt-mail-status').textContent='Versand nicht bestätigt. Ein weiterer Klick prüft denselben Versandversuch.'; throw error; }
+  });
 };
 $('document').onclick=()=>run(async()=>{
   state.payment=await api('document',{payment_id:state.payment.id}); renderPayment();

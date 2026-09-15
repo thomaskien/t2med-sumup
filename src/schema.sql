@@ -38,3 +38,7 @@ CREATE INDEX IF NOT EXISTS payment_visit ON payments(visit_id, created_at);
 CREATE TABLE IF NOT EXISTS mock_records (
     payment_id TEXT PRIMARY KEY REFERENCES payments(id), resource_json TEXT NOT NULL, created_at INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS receipt_emails (
+    request_id TEXT PRIMARY KEY, payment_id TEXT NOT NULL REFERENCES payments(id),
+    recipient TEXT NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL
+);

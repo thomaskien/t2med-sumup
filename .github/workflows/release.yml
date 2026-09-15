@@ -20,7 +20,9 @@ jobs:
         with:
           go-version: '1.23.x'
           cache: false
+      - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin libphp-phpmailer fonts-dejavu-core
       - run: php tests/critical.php
+      - run: php tests/mail-mime.php
       - run: python3 tests/tls-pin.py
       - run: find src public scripts -name '*.php' -exec php -l {} \;
       - run: bash -n scripts/install-server.sh client/install-linux.sh client/install-macos.command
@@ -35,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install isolated server in mock mode
-        run: printf '\n\n\n\n' | sudo bash scripts/install-server.sh
+        run: printf '\n\n\n\n\n' | sudo bash scripts/install-server.sh
       - name: Check HTTPS and PHP
         run: |
           sudo systemctl is-active kienzle-sumup-apache kienzle-sumup-php

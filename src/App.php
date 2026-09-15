@@ -6,12 +6,14 @@ final class App {
     public readonly Database $db;
     private SumUpClient $sumup;
     private FhirClient $fhir;
-    public function __construct(public readonly Config $config, ?HttpClient $http = null) {
+    private ReceiptMailer $mailer;
+    public function __construct(public readonly Config $config, ?HttpClient $http = null, ?ReceiptMailer $mailer = null) {
         umask(0077);
         $this->db = new Database($config->get('app', 'state_dir'));
         $http ??= new HttpClient();
         $this->sumup = new SumUpClient($config, $http);
         $this->fhir = new FhirClient($config, $http);
+        $this->mailer = $mailer ?? new ReceiptMailer($config);
     }
     public static function id(): string { return bin2hex(random_bytes(16)); }
     public static function string(array $input, string $key, int $max = 200, bool $required = true): string {
@@ -113,6 +115,7 @@ final class App {
             'payment' => $payment ? $this->publicPayment($payment) : null,
             'mock' => $this->config->get('sumup', 'mode') === 'mock',
             'fhir_mock' => $this->config->get('fhir', 'mode') === 'mock',
+            'mail_enabled' => $this->config->get('mail', 'enabled', false),
             'mock_document_fail' => (bool)$visit['mock_document_fail'],
             'max_amount_cents' => $this->config->get('app', 'max_amount_cents')];
     }
@@ -186,7 +189,7 @@ final class App {
     private function payment(array $visit, string $id): array {
         return $this->db->one('SELECT * FROM payments WHERE id=? AND visit_id=?', [$id, $visit['id']]) ?? throw new Problem('Zahlung nicht gefunden.', 404);
     }
-    public function receipt(array $visit, string $id): array {
+    public function receipt(array $visit, string $id): string {
         $payment = $this->payment($visit, $id);
         if ($payment['payment_status'] !== 'successful') throw new Problem('Ein Beleg ist erst nach bestätigter erfolgreicher Zahlung verfügbar.', 409);
         return $this->sumup->receipt($payment);
@@ -195,9 +198,8 @@ final class App {
         $payment = $this->payment($visit, $id);
         if ($payment['payment_status'] !== 'successful') throw new Problem('Ein Beleg ist erst nach bestätigter erfolgreicher Zahlung verfügbar.', 409);
         $url = $this->sumup->receiptLink($payment);
-        if ($url === '') return ['url' => '', 'email' => '', 'message' => $this->config->get('sumup', 'mode') === 'mock'
-            ? 'Im Testmodus gibt es keinen echten SumUp-Beleglink.' : 'SumUp liefert für diese Zahlung keinen Beleglink. Der Zahlungsbeleg kann weiterhin gedruckt oder als PDF gespeichert werden.'];
-        $email = ''; $message = '';
+        $email = ''; $message = $url === '' ? ($this->config->get('sumup', 'mode') === 'mock'
+            ? 'Im Testmodus werden Beleg und E-Mail-Versand nur simuliert.' : 'SumUp liefert für diese Zahlung keinen Originalbeleg-Link.') : '';
         if ($visit['oauth_cipher'] !== '') {
             try {
                 $patient = $this->fhir->patient($visit['context_id'], $this->decrypt($visit['oauth_cipher']));
@@ -206,6 +208,40 @@ final class App {
             } catch (Problem) { $message = 'Die E-Mail-Adresse konnte nicht aus t2med geladen werden. Bitte selbst eintragen.'; }
         }
         return ['url' => $url, 'email' => $email, 'message' => $message];
+    }
+    public function receiptEmail(array $visit, array $input): array {
+        if (!$this->config->get('mail', 'enabled', false)) throw new Problem('E-Mail-Versand ist im Server-Installer noch nicht eingerichtet.', 409);
+        $id = self::string($input, 'payment_id', 32);
+        $email = self::string($input, 'email', 254);
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) throw new Problem('Bitte eine gültige E-Mail-Adresse eingeben.');
+        $request = self::string($input, 'request_id', 64);
+        if (!preg_match('/^[A-Za-z0-9-]{16,64}$/D', $request)) throw new Problem('Ungültiger Versandschlüssel.');
+        return $this->db->locked('receipt-email-' . $id, function () use ($visit, $id, $email, $request): array {
+            $payment = $this->payment($visit, $id);
+            if ($payment['payment_status'] !== 'successful') throw new Problem('E-Mail erst nach erfolgreicher Zahlung möglich.', 409);
+            $old = $this->db->one('SELECT * FROM receipt_emails WHERE request_id=?', [$request]);
+            if ($old && ($old['payment_id'] !== $id || $old['recipient'] !== $email)) throw new Problem('Versandschlüssel gehört zu einer anderen Nachricht.', 409);
+            if ($old) return $this->mailResult($old['status']);
+            $pdf = $this->receipt($visit, $id);
+            $this->db->query("INSERT INTO receipt_emails(request_id,payment_id,recipient,status,created_at) VALUES(?,?,?,'sending',?)", [$request, $id, $email, time()]);
+            $status = 'simulated';
+            if ($this->config->get('sumup', 'mode') === 'live') {
+                try { $this->mailer->send($email, $pdf, $payment['reference']); $status = 'sent'; }
+                catch (Problem $e) {
+                    $this->db->query("UPDATE receipt_emails SET status='unknown' WHERE request_id=?", [$request]);
+                    return ['status' => 'unknown', 'message' => $e->getMessage()];
+                }
+            }
+            $this->db->query('UPDATE receipt_emails SET status=? WHERE request_id=?', [$status, $request]);
+            return $this->mailResult($status);
+        });
+    }
+    private function mailResult(string $status): array {
+        return ['status' => $status, 'message' => match ($status) {
+            'sent' => 'E-Mail mit PDF-Anhang wurde an den Mailserver übergeben.',
+            'simulated' => 'Testversand erfolgreich simuliert. Es wurde keine E-Mail versendet.',
+            default => 'Der Versand wurde noch nicht bestätigt. Empfängerpostfach prüfen, bevor erneut gesendet wird.',
+        }];
     }
     public function poll(array $visit, string $id): array {
         return $this->db->locked('payment-' . $id, function () use ($visit, $id): array {

@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 ROOT = Path('/etc/kienzle-sumup')
 CONFIG = ROOT / 'kienzle-sumup.toml'
 SOURCE = Path(__file__).resolve().parent.parent
+T2MED_DEMO_API_KEY = '7QwA7931lJSQfMKuTH4MQXLn4YEiNhE5tggnYKlY4HE'
 
 
 def ask(label, default='', secret=False):
@@ -75,7 +76,8 @@ def main():
     if fhir_mode=='live':
         fhir['base_url'] = ask('FHIR-Basisadresse, vom Server erreichbar',fhir['base_url']).rstrip('/')
         fhir['launch_urls'] = [s.strip().rstrip('/') for s in ask('Erlaubte fhirBasisUrl aus t2med (mehrere mit Komma trennen)', ','.join(fhir['launch_urls']) or fhir['base_url']).split(',') if s.strip()]
-        fhir['api_key'] = ask('t2med FHIR API-Key',fhir['api_key'],True)
+        label = 't2med FHIR API-Key' + (' (Enter verwendet den Demo-Key)' if not fhir['api_key'] else '')
+        fhir['api_key'] = ask(label,fhir['api_key'],True) or T2MED_DEMO_API_KEY
         fhir['entry_code'] = ask('Aktenkürzel',fhir['entry_code'])
         ca = ask('t2med-Zertifikat/CA als PEM-Datei (leer: Systemvertrauen)',fhir['ca_file'])
         if ca:
@@ -94,6 +96,19 @@ def main():
              'max_amount_cents':int(ask('Maximalbetrag pro Zahlung in Cent',str(get('app','max_amount_cents',100000)))),
              'development':False,'launcher_key':get('app','launcher_key') or secrets.token_hex(32),
              'encryption_key':get('app','encryption_key') or secrets.token_hex(32)},'sumup':sumup,'fhir':fhir}
+    mail = {key:get('mail',key,default) for key,default in {'enabled':False,'host':'','port':587,'encryption':'starttls','username':'','password':'','from_address':'','from_name':''}.items()}
+    answer = ask('PDF-Belege direkt per E-Mail senden (ja/nein)', 'ja' if mail['enabled'] else 'nein')
+    if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+    mail['enabled'] = answer == 'ja'
+    if mail['enabled']:
+        mail['host'] = ask('SMTP-Server',mail['host'])
+        mail['encryption'] = ask('SMTP-Verschlüsselung: starttls oder smtps',mail['encryption'])
+        mail['port'] = int(ask('SMTP-Port',str(mail['port'] if get('mail','host') else (465 if mail['encryption']=='smtps' else 587))))
+        mail['username'] = ask('SMTP-Benutzername (leer bei Relay ohne Anmeldung)',mail['username'])
+        mail['password'] = ask('SMTP-Passwort',mail['password'],True) if mail['username'] else ''
+        mail['from_address'] = ask('Absender-E-Mail-Adresse',mail['from_address'])
+        mail['from_name'] = ask('Absendername / Praxisname',mail['from_name'])
+    config['mail'] = mail
     text = '# Kienzle-SumUp · Zugangsdaten nicht weitergeben.\n'
     for section, values in config.items():
         text += '\n['+section+']\n'

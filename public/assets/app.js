@@ -3,7 +3,7 @@ const $ = id => document.getElementById(id);
 const euro = cents => new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'}).format(cents / 100);
 let state = null, visitId = new URL(location.href).searchParams.get('v'), csrf = '', timer = null, busy = false;
 let selected = new Set(), retrySelection = false, startRequest = null;
-let receiptShare = null, receiptMailRequest = null;
+let receiptShare = null, receiptRecipient = null, receiptMailRequest = null;
 function message(text='') { $('message').textContent = text; $('message').hidden = !text; }
 async function api(action, data={}) {
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 75000);
@@ -57,12 +57,16 @@ function renderPayment() {
   const p = state.payment; const showing = p && !retrySelection;
   $('selection').hidden=!!showing; $('payment').hidden=!showing;
   if (showing) manage(false);
-  for (const id of ['document','receipt','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
-  if(!showing || p.payment_status!=='successful' || receiptShare?.paymentId!==p.id) { $('receipt-share-panel').hidden=true; receiptShare=null; receiptMailRequest=null; }
+  for (const id of ['document','receipt','receipt-mail','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
+  if(!showing || p.payment_status!=='successful' || receiptShare?.paymentId!==p.id) { $('receipt-share-panel').hidden=true; receiptShare=null; }
+  if(!showing || p.payment_status!=='successful' || receiptRecipient?.paymentId!==p.id) {
+    receiptRecipient=null; receiptMailRequest=null; $('receipt-email').value=''; mailStatus('');
+  }
   clearTimeout(timer);
   if (!showing) return;
   $('receipt').hidden=p.payment_status!=='successful';
   $('receipt-share').hidden=p.payment_status!=='successful';
+  if(p.payment_status==='successful') renderReceiptMail();
   $('payment-amount').textContent=euro(p.amount_cents); $('payment-reference').textContent=p.reference;
   $('payment-error').textContent=p.error_message; $('payment-error').hidden=!p.error_message;
   let title, description, symbol='…';
@@ -120,42 +124,78 @@ $('receipt').onclick=()=>{
   const query=new URLSearchParams({v:visitId,p:state.payment.id});
   window.open('/receipt.php?'+query, '_blank', 'noopener,noreferrer');
 };
-$('receipt-share').onclick=()=>run(async()=>{
-  const paymentId=state.payment.id;
-  const result=await api('receipt_share',{payment_id:paymentId});
-  receiptShare={...result,paymentId};
-  $('receipt-share-panel').hidden=false;
-  $('receipt-share-message').textContent=result.message;
-  $('receipt-share-details').hidden=false;
-  $('receipt-original-link').hidden=!result.url;
-  $('receipt-pdf-download').href='/receipt.php?'+new URLSearchParams({v:visitId,p:paymentId,download:'1'});
-  $('receipt-link').value=result.url;
-  if(result.url) $('receipt-open').href=result.url; else $('receipt-open').removeAttribute('href');
-  $('receipt-email').value=result.email;
+function mailStatus(text) { $('receipt-mail-status').textContent=text; $('receipt-mail-status').hidden=!text; }
+function renderReceiptMail() {
+  const button=$('receipt-mail'); button.hidden=false;
+  if(!state.mail_enabled) { button.textContent='Beleg mailen – E-Mail-Versand nicht eingerichtet'; button.disabled=true; return; }
+  if(!receiptRecipient) {
+    const recipient=receiptRecipient={paymentId:state.payment.id,email:'',loading:true,edited:false,sent:false};
+    // Nur die Adresse lesen; der Versand startet ausschließlich mit dem Mail-Button.
+    api('receipt_recipient',{payment_id:recipient.paymentId}).then(result=>{
+      if(receiptRecipient!==recipient) return;
+      recipient.loading=false;
+      if(!recipient.edited) { recipient.email=result.email; $('receipt-email').value=result.email; }
+      if(result.message) mailStatus(result.message);
+      renderReceiptMail();
+    }).catch(()=>{
+      if(receiptRecipient!==recipient) return;
+      recipient.loading=false; mailStatus('E-Mail-Adresse konnte nicht geladen werden. Bitte selbst eintragen.'); renderReceiptMail();
+    });
+  }
+  button.disabled=busy || receiptRecipient.loading;
+  button.textContent=receiptRecipient.loading ? 'E-Mail-Adresse wird geladen …' : receiptRecipient.email
+    ? (receiptRecipient.sent ? 'Beleg erneut mailen an „' : 'Beleg mailen an „')+receiptRecipient.email+'“'
+    : 'Beleg mailen – E-Mail-Adresse eingeben';
+}
+function showReceiptDetails() {
+  receiptShare ??= {paymentId:state.payment.id,url:''};
+  $('receipt-share-panel').hidden=false; $('receipt-share-details').hidden=false;
+  $('receipt-pdf-download').href='/receipt.php?'+new URLSearchParams({v:visitId,p:state.payment.id,download:'1'});
+  $('receipt-original-link').hidden=!receiptShare?.url;
   $('receipt-email-form').hidden=!state.mail_enabled;
   $('receipt-mail-unconfigured').hidden=state.mail_enabled;
+}
+$('receipt-mail').onclick=()=>{
+  if(busy || !state.mail_enabled || !receiptRecipient || receiptRecipient.loading) return;
+  if(!receiptRecipient.email) { showReceiptDetails(); $('receipt-email').focus(); return; }
+  sendReceiptEmail();
+};
+$('receipt-share').onclick=()=>run(async()=>{
+  const paymentId=state.payment.id;
+  showReceiptDetails();
+  const result=await api('receipt_share',{payment_id:paymentId});
+  receiptShare={...result,paymentId};
+  showReceiptDetails();
+  $('receipt-share-message').textContent=result.message;
+  $('receipt-link').value=result.url;
+  if(result.url) $('receipt-open').href=result.url; else $('receipt-open').removeAttribute('href');
 });
 $('receipt-copy').onclick=()=>run(async()=>{
   if(!receiptShare?.url) return;
   try { await navigator.clipboard.writeText(receiptShare.url); $('receipt-share-message').textContent='Beleglink kopiert.'; }
   catch { $('receipt-link').focus(); $('receipt-link').select(); $('receipt-share-message').textContent='Bitte den markierten Link kopieren.'; }
 });
-$('receipt-email-form').onsubmit=e=>{
-  e.preventDefault();
-  if(busy || !state.mail_enabled || receiptShare?.paymentId!==state.payment.id) return;
+$('receipt-email').oninput=()=>{
+  if(!receiptRecipient) return;
+  receiptRecipient.email=$('receipt-email').value.trim(); receiptRecipient.edited=true; receiptRecipient.sent=false;
+  renderReceiptMail();
+};
+function sendReceiptEmail() {
+  if(busy || !state.mail_enabled || receiptRecipient?.paymentId!==state.payment.id) return;
   const email=$('receipt-email').value.trim();
-  if(!email || /[\r\n]/.test(email) || !$('receipt-email-form').reportValidity()) return;
+  if(!email || /[\r\n]/.test(email) || !$('receipt-email').checkValidity()) { showReceiptDetails(); $('receipt-email').reportValidity(); return; }
   run(async()=>{
     if(!receiptMailRequest || receiptMailRequest.email!==email) receiptMailRequest={request_id:crypto.randomUUID(),email,payment_id:state.payment.id};
-    $('receipt-mail-status').textContent='PDF wird erstellt und E-Mail versendet …';
+    mailStatus('PDF wird erstellt und E-Mail versendet …');
     try {
       const result=await api('receipt_email',receiptMailRequest);
-      $('receipt-mail-status').textContent=result.message;
-      $('receipt-email-send').textContent='PDF erneut per E-Mail senden';
+      mailStatus(result.message);
+      receiptRecipient.sent=['sent','simulated'].includes(result.status) && receiptRecipient.email===email;
       receiptMailRequest=null;
-    } catch(error) { $('receipt-mail-status').textContent='Versand nicht bestätigt. Ein weiterer Klick prüft denselben Versandversuch.'; throw error; }
+    } catch(error) { mailStatus('Versand nicht bestätigt. Ein weiterer Klick prüft denselben Versandversuch.'); throw error; }
   });
-};
+}
+$('receipt-email-form').onsubmit=e=>{ e.preventDefault(); sendReceiptEmail(); };
 $('document').onclick=()=>run(async()=>{
   state.payment=await api('document',{payment_id:state.payment.id}); renderPayment();
   if(state.payment.doc_status==='written') { state.completed=true; setTimeout(()=>window.close(),900); }

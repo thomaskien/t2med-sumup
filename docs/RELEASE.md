@@ -1,43 +1,27 @@
-Version 1.0 der schlanken Kartenzahlungsseite für T2med und SumUp Solo.
+Version 1.1 der Kartenzahlungsseite für T2med und SumUp Solo.
 
-Neu seit Version 0.1:
+- Großer Button **Beleg mailen an „emailadresse“** direkt unter **Zahlungsbeleg / PDF**.
+  Die Adresse wird nach erfolgreicher Zahlung automatisch aus t2med geladen;
+  ein Klick versendet den PDF-Anhang über den eingerichteten SMTP-Server.
+- Fehlt die Adresse, öffnet der Button die Eingabe. Eine vorhandene Adresse kann über
+  **Beleglink / E-Mail-Adresse ändern** angepasst werden.
+- README mit Video-Vorschau sowie Anleitung für SumUp API-Key, Affiliate-Key, App-ID,
+  Händlercode, Solo-Kopplung und Reader-ID.
+- Starter für Windows, macOS und Linux mit Versionsangabe 1.1 und Prüfsummen.
 
-- Originalbeleg von SumUp als PDF anzeigen, herunterladen und drucken. Die bisherige
-  zusätzliche JSON-Belegabfrage entfällt.
-- PDF-Anhang auf Klick direkt per SMTP versenden; E-Mail-Adresse aus t2med wird
-  vorausgefüllt und kann geändert werden. SMTP-Einrichtung erfolgt im Server-Installer.
-- Verlorene Versandantworten werden berücksichtigt; ein bewusster erneuter Versand
-  ist möglich. Kein Hintergrundversand und keine automatische Aktendokumentation.
-- t2med-Demo-Key als Vorgabe bei leerer Ersteingabe; eigene und vorhandene Schlüssel
-  haben Vorrang.
-- t2med-Zertifikate ohne passenden Hostnamen können an ihren öffentlichen Schlüssel
-  gebunden werden.
-
-Weiterhin enthalten:
-
-- Leistungen direkt auf der Zahlungsseite anlegen, ändern und löschen.
-- Server berechnet Beträge in Cent und speichert die damaligen Leistungen/Preise.
-- Dokumentation ausschließlich durch den Abschlussbutton, mit Wiederholungsprüfung.
-- Separate Apache-/PHP-FPM-Dienste für Debian, Ubuntu und Raspberry Pi OS, HTTPS-Port 7868.
-- Zentrale TOML-Konfiguration; Server-Installer fragt Zugangsdaten ab.
-- Selbstsigniertes Zertifikat mit 50 Jahren Laufzeit.
-- Starter für Windows, macOS und Linux mit eigenem `kienzle-sumup://`-Schema.
-- Mock-Modus für die vollständige Bedienung ohne Terminal und t2med.
-
-Für das Update im vorhandenen Repository ausführen:
+Update auf dem Server:
 
 ```bash
 git pull --ff-only
 sudo bash scripts/install-server.sh
 ```
 
-Der Installer ergänzt PDF-Konverter, Mailbibliothek und Versandtabelle; bestehende
-Zahlungen und Konfiguration bleiben erhalten. Für den Versand die neue Frage
-„PDF-Belege direkt per E-Mail senden“ mit `ja` beantworten und SMTP-Daten eingeben.
+Bestehende Konfiguration und Zahlungen bleiben erhalten. Für den E-Mail-Versand muss
+im Installer **PDF-Belege direkt per E-Mail senden** aktiviert und SMTP eingerichtet sein.
 
-Die Binärdateien sind Starter, keine vollständige Serverinstallation. Sie benötigen die
-vom Server-Installer erstellte `client.json`. Anleitung im Repository beachten.
+PHP-Kernprüfungen sowie die Browserprüfung für Ein-Klick-Versand, fehlende/geänderte
+Adressen und schmale Bildschirme sind bestanden. Beim Test wurde der Versand simuliert;
+es wurden keine echten E-Mails versendet.
 
-PDF-Erzeugung, E-Mail-Anhang, Wiederholungen und Browserbedienung wurden mit
-kontrollierten Testdaten geprüft. Ein echter SMTP-Versand mit den Zugangsdaten des
-Anwenders wurde im Entwicklungssystem nicht durchgeführt.
+Die Binärdateien sind Starter und benötigen die vom Server-Installer erstellte
+`client.json`. Hinweise zur Einrichtung stehen in der README.

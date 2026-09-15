@@ -103,6 +103,7 @@ try {
     $p=$app->start($v,$input+['amount_cents'=>1]);check($p['amount_cents']===1600,'Browserbetrag vertraut');
     rejects(fn()=>$app->receipt($v,$p['id']),'Beleg vor erfolgreicher Zahlung');
     rejects(fn()=>$app->receiptShare($v,$p['id']),'Beleglink vor erfolgreicher Zahlung');
+    rejects(fn()=>$app->receiptRecipient($v,$p['id']),'E-Mail-Vorschlag vor erfolgreicher Zahlung');
     check($app->start($v,$input)['id']===$p['id'],'Doppelstart');
     $changed=$input;$changed['manual_amount']='2';rejects(fn()=>$app->start($v,$changed),'Idempotenzschlüssel mit geändertem Inhalt akzeptiert');
     $app->deleteService($v,$input['services'][0]);
@@ -112,6 +113,7 @@ try {
     $app->mock($v,['payment_id'=>$p['id'],'status'=>'successful']);
     check(str_starts_with($app->receipt($v,$p['id']),'%PDF-'),'Testbeleg ist kein PDF');
     rejects(fn()=>$app->receipt($v2,$p['id']),'Beleg für fremden Vorgang zugänglich');
+    rejects(fn()=>$app->receiptRecipient($v2,$p['id']),'E-Mail-Vorschlag für fremden Vorgang zugänglich');
     check($app->poll($v,$p['id'])['payment_status']==='successful','Mockzahlung nicht erfolgreich');
     check((int)$app->db->query('SELECT COUNT(*) FROM mock_records')->fetchColumn()===0,'Polling dokumentiert automatisch');
     $app->mock($v,['document_fail'=>true]);$v=$app->visit($b,$v['id']);
@@ -157,6 +159,9 @@ try {
     check($app->poll($v,$p['id'])['payment_status']==='successful','Wiederabgleich fehlgeschlagen');
     $paymentBefore=$app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']]);
     $postsBefore=$http->posts('api.sumup.com');$fhirBefore=$http->posts('t2med.test');
+    $sumupCallsBefore=count(array_filter($http->calls,fn($call)=>str_contains($call[1],'sumup.com')));
+    check($app->receiptRecipient($v,$p['id'])['email']==='erika@example.invalid','Automatischer E-Mail-Vorschlag fehlt');
+    check(count(array_filter($http->calls,fn($call)=>str_contains($call[1],'sumup.com')))===$sumupCallsBefore,'E-Mail-Vorschlag ruft SumUp auf');
     $url='https://receipts-ng.sumup.com/v0.1/receipts/transaction-1?mid=MTEST&format=svg';
     $http->links=[['rel'=>'receipt','href'=>$url]];
     $receipt=$app->receipt($v,$p['id']);$app->receipt($v,$p['id']);

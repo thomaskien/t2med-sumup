@@ -198,8 +198,15 @@ final class App {
         $payment = $this->payment($visit, $id);
         if ($payment['payment_status'] !== 'successful') throw new Problem('Ein Beleg ist erst nach bestätigter erfolgreicher Zahlung verfügbar.', 409);
         $url = $this->sumup->receiptLink($payment);
-        $email = ''; $message = $url === '' ? ($this->config->get('sumup', 'mode') === 'mock'
+        $message = $url === '' ? ($this->config->get('sumup', 'mode') === 'mock'
             ? 'Im Testmodus werden Beleg und E-Mail-Versand nur simuliert.' : 'SumUp liefert für diese Zahlung keinen Originalbeleg-Link.') : '';
+        $recipient = $this->receiptRecipient($visit, $id);
+        return ['url' => $url, 'email' => $recipient['email'], 'message' => $recipient['message'] ?: $message];
+    }
+    public function receiptRecipient(array $visit, string $id): array {
+        $payment = $this->payment($visit, $id);
+        if ($payment['payment_status'] !== 'successful') throw new Problem('E-Mail-Adresse erst nach erfolgreicher Zahlung verfügbar.', 409);
+        $email = ''; $message = '';
         if ($visit['oauth_cipher'] !== '') {
             try {
                 $patient = $this->fhir->patient($visit['context_id'], $this->decrypt($visit['oauth_cipher']));
@@ -207,7 +214,7 @@ final class App {
                 else $message = 'Die E-Mail-Adresse konnte nicht eindeutig dem Patienten zugeordnet werden. Bitte selbst eintragen.';
             } catch (Problem) { $message = 'Die E-Mail-Adresse konnte nicht aus t2med geladen werden. Bitte selbst eintragen.'; }
         }
-        return ['url' => $url, 'email' => $email, 'message' => $message];
+        return ['email' => $email, 'message' => $message];
     }
     public function receiptEmail(array $visit, array $input): array {
         if (!$this->config->get('mail', 'enabled', false)) throw new Problem('E-Mail-Versand ist im Server-Installer noch nicht eingerichtet.', 409);

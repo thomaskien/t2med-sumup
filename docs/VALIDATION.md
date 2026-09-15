@@ -1,7 +1,16 @@
-# Prüfung von Version 1.0
+# Prüfung von Version 1.1
 
 Stand: 15. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
 vom 13. September sind unten gesondert aufgeführt.
+
+Ergänzung für Version 1.1: PHP-Kernprüfungen und Syntaxprüfungen bestanden. Die neue
+Adressabfrage prüft die Zahlungs-/Patientenzuordnung und ruft SumUp nicht auf.
+Im separaten Chrome-Testbrowser geprüft: Mail-Button erst nach Zahlungserfolg,
+automatisch geladene Adresse ohne Versand, volle Buttonbreite direkt unter dem
+PDF-Button, genau eine Versandanfrage nach einem Klick und sichtbare Bestätigung.
+Fehlende und manuell geänderte Adressen sowie eine lange Adresse bei 390 Pixeln
+Bildschirmbreite sind geprüft. Desktop- und Mobilansicht wurden visuell kontrolliert.
+Es wurden ausschließlich Testdaten verwendet und keine echten E-Mails versendet.
 
 PDF-/SMTP-Erweiterung vom 15. September 2026: PHP-Kernprüfungen und Syntaxprüfungen
 bestanden. Geprüft sind Originalbeleg-Abruf über einen erlaubten SumUp-Link der

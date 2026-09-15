@@ -2,7 +2,17 @@
 
 Eine kleine PHP-Webanwendung für Kartenzahlungen am SumUp Solo. Leistungen auswählen,
 Betrag ans Terminal senden und nach erfolgreicher Zahlung bewusst in der Patientenakte
-dokumentieren. **Version 1.0**, von Dr. Thomas Kienzle.
+dokumentieren. **Version 1.1**, von Dr. Thomas Kienzle.
+
+## Video: Sumup in T2med anbinden
+
+<p align="center">
+  <a href="https://youtu.be/VqhrRvIP_0Q">
+    <img src="https://i.ytimg.com/vi/VqhrRvIP_0Q/hqdefault.jpg" width="640" alt="Video ansehen: Sumup in T2med anbinden von Thomas Kienzle">
+  </a>
+</p>
+
+**[▶ Video auf YouTube ansehen](https://youtu.be/VqhrRvIP_0Q)**
 
 ## Ablauf
 
@@ -12,7 +22,9 @@ dokumentieren. **Version 1.0**, von Dr. Thomas Kienzle.
 4. Die Seite zeigt den von SumUp bestätigten Zahlungsstatus.
    Bei Bedarf **Zahlungsbeleg / PDF** anklicken: Der Originalbeleg von SumUp wird
    als PDF geöffnet und kann gedruckt oder gespeichert werden.
-5. **Dokumentation in der Akte** schreibt einen Freitext-Eintrag und schließt den Vorgang ab.
+5. Optional **Beleg mailen an „emailadresse“** direkt unter dem PDF-Button anklicken.
+   Ein Klick versendet den PDF-Anhang an die angezeigte Adresse.
+6. **Dokumentation in der Akte** schreibt einen Freitext-Eintrag und schließt den Vorgang ab.
    Das Fenster wird anschließend nach Möglichkeit geschlossen; andernfalls bleibt die
    Abschlussmeldung sichtbar und das Fenster kann manuell geschlossen werden.
 
@@ -20,7 +32,7 @@ dokumentieren. **Version 1.0**, von Dr. Thomas Kienzle.
 anlegen, bearbeiten und löschen. Löschen entfernt sie aus der Auswahl; gespeicherte
 Zahlungen behalten ihre damaligen Bezeichnungen und Preise.
 
-**Beleglink / E-Mail** zeigt den von SumUp gelieferten Originalbeleg-Link sowie
+**Beleglink / E-Mail-Adresse ändern** zeigt den von SumUp gelieferten Originalbeleg-Link sowie
 **PDF herunterladen**. Die PDF wird aus der SVG (alternativ PNG) des Originalbelegs
 erzeugt. Voraussetzung ist ein gültiger Beleglink in der geprüften Transaktion.
 Die frühere zusätzliche JSON-Belegabfrage wird nicht mehr verwendet.
@@ -31,14 +43,16 @@ Benutzername, Passwort und Absender eintragen. Das Passwort wird verdeckt abgefr
 die Daten bleiben unter `[mail]` in der geschützten TOML-Datei. Bestehende Einstellungen
 bleiben bei Updates erhalten. Ohne SMTP bleibt der PDF-Download nutzbar.
 
-Die bevorzugte aktuelle E-Mail-Adresse wird beim Öffnen des Bereichs aus t2med
-geladen und kann vor dem Versand geändert werden. Nur der Klick auf **PDF per
-E-Mail senden** sendet den PDF-Anhang über den konfigurierten Mailserver. Es läuft
+Die bevorzugte aktuelle E-Mail-Adresse wird nach erfolgreicher Zahlung automatisch
+aus t2med geladen und auf dem großen Button **Beleg mailen an „emailadresse“**
+angezeigt. Ein Klick darauf sendet die PDF über den konfigurierten Mailserver.
+Unter **Beleglink / E-Mail-Adresse ändern** kann die Adresse vorher geändert werden.
+Fehlt eine Adresse, öffnet der große Button die Eingabe. Es läuft
 kein Hintergrundversand. Die Bestätigung bedeutet, dass der Mailserver die Nachricht
 angenommen hat; die Zustellung an das Postfach kann später scheitern. Bei einer
 verlorenen Antwort wird derselbe Versandversuch geprüft; ein bewusster erneuter
 Versand ist möglich. Nach Abschluss der Aktendokumentation ist der t2med-Zugriff
-beendet; dann kann die Adresse nur noch manuell eingetragen werden.
+beendet; nach einem Neuladen kann die Adresse dann nur noch manuell eingetragen werden.
 
 Belegabruf, Drucken und E-Mail-Versand verändern weder Zahlung noch Akteneintrag.
 Der Browser kann nur auf Belege seiner erfolgreich bestätigten Zahlungen zugreifen.
@@ -123,7 +137,7 @@ Er enthält `client.json` mit Serveradresse, Starter-Schlüssel und Zertifikat-F
 sowie das öffentliche Serverzertifikat. **Diesen Ordner nicht ins Repository oder unter
 den Webroot legen.** Er ist ausschließlich für berechtigte Praxisarbeitsplätze vorgesehen.
 
-Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.0` und prüfen
+Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.1` und prüfen
 seine SHA-256-Prüfsumme. Python, Go und PHP werden auf dem Arbeitsplatz nicht benötigt.
 Alternativ vorab die Release-Dateien und `SHA256SUMS` in diesen Ordner legen.
 
@@ -172,20 +186,99 @@ vollständigen Token-Links teilen.
 
 ## SumUp Solo einrichten
 
-Benötigt werden API-Key, Affiliate-Key, zugehörige App-ID, Händlercode und die ID eines
-mit dem Händlerkonto gekoppelten Solo-Readers. Die Reader-Kopplung erfolgt über die
-SumUp-Entwicklerwerkzeuge/Reader API. Der Installer nimmt die bestehende Reader-ID auf.
-Benötigte Berechtigungen: Reader-Checkout starten/lesen/abbrechen sowie Transaktionen lesen.
-Firmware und Kontofreigaben müssen die Cloud API unterstützen.
+Der Installer benötigt fünf Werte aus deinem **SumUp-Händlerkonto**:
+
+| Installer-Feld | Bedeutung |
+| --- | --- |
+| SumUp API-Key | Geheimer Schlüssel für die API-Aufrufe deines Kontos. |
+| SumUp Affiliate-Key | Kennzeichnet die Anbindung bei Kartenzahlungen. |
+| SumUp App-ID | Zum Affiliate-Key hinterlegte Kennung; Vorgabe: `de.kienzle.sumup`. |
+| SumUp Händlercode | Eindeutige Kennung der Praxis bei SumUp, beispielsweise `MK01A8C2`. |
+| SumUp Reader-ID | API-ID des mit diesem Händlerkonto gekoppelten Solo. |
+
+### API-Key und Affiliate-Key anlegen
+
+1. Bei [SumUp](https://me.sumup.com) anmelden und über das Profil **Einstellungen →
+   Für Entwickler / For Developers → Toolkit → API Keys** öffnen.
+2. **Create / Erstellen** wählen, beispielsweise `kienzle-sumup` als Namen vergeben
+   und den geheimen Key für die Eingabe im Installer aufbewahren. Der dort ebenfalls
+   angezeigte **Public Key** ist hierfür ungeeignet.
+3. Unter **Affiliate Keys** einen Schlüssel für die App-ID `de.kienzle.sumup` anlegen.
+   Affiliate-Key und genau diese App-ID im Installer eintragen. Ein Affiliate-Key
+   ersetzt den API-Key nicht.
+
+Anleitungen von SumUp: [API-Key erstellen](https://developer.sumup.com/tools/authorization/api-keys),
+[Affiliate-Key und App-ID](https://developer.sumup.com/tools/authorization/affiliate-keys).
+Die eigenen geheimen Schlüssel ausschließlich im Server-Installer eingeben.
+Der t2med-Demo-Key gilt nur für t2med und kann keinen SumUp-Key ersetzen.
+
+### Händlercode ermitteln
+
+Der Händlercode (`merchant_code`) bezeichnet dein Unternehmen bei SumUp und sieht
+beispielsweise wie `MK01A8C2` aus. Er gehört zu dem Händlerkonto, für das der API-Key
+erstellt wurde. [SumUp: Händler und Händlercode](https://developer.sumup.com/tools/glossary/merchant)
+
+Mit deinem API-Key lässt sich das zugehörige Profil auf dem Linux-Server in Bash
+abfragen. In der JSON-Antwort nach `merchant_code` suchen:
+
+```bash
+read -r -s -p 'SumUp API-Key: ' SUMUP_API_KEY
+printf '\n'
+curl --fail --silent --show-error https://api.sumup.com/v0.1/me \
+  -H "Authorization: Bearer $SUMUP_API_KEY"
+```
+
+Diese [Profilabfrage](https://developer.sumup.com/tools/authorization/api-keys#authorize-requests-with-an-api-key)
+verwendet denselben API-Key wie der Installer.
+
+### Solo koppeln und Reader-ID übernehmen
+
+1. Solo mit WLAN verbinden und bei einem angemeldeten Händlerkonto zunächst am
+   Gerät abmelden: **Einstellungen → Über / About → Abmelden**.
+2. Im Gerätemenü **Verbindungen / Connections → API → Verbinden / Connect** öffnen.
+   Der angezeigte Pairing-Code ist fünf Minuten gültig.
+3. Den Reader einmal über die API mit dem Händlerkonto verbinden. In derselben
+   Bash-Sitzung den Händlercode eingeben und `PAIRINGCODE` im Befehl ersetzen:
+
+```bash
+read -r -p 'SumUp Händlercode: ' SUMUP_MERCHANT_CODE
+curl --fail --silent --show-error \
+  "https://api.sumup.com/v0.1/merchants/$SUMUP_MERCHANT_CODE/readers" \
+  -H "Authorization: Bearer $SUMUP_API_KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"pairing_code":"PAIRINGCODE","name":"Praxis Solo"}'
+```
+
+4. **`id` aus der Antwort** als Reader-ID in den Installer übernehmen. Pairing-Code,
+   Seriennummer und Händlercode sind andere Werte.
+
+Bereits gekoppelte Reader lassen sich ohne erneute Kopplung abfragen:
+
+```bash
+curl --fail --silent --show-error \
+  "https://api.sumup.com/v0.1/merchants/$SUMUP_MERCHANT_CODE/readers" \
+  -H "Authorization: Bearer $SUMUP_API_KEY"
+unset SUMUP_API_KEY SUMUP_MERCHANT_CODE
+```
+
+Bei mehreren Geräten die `id` des gewünschten Readers anhand seines Namens auswählen.
+Details: [Solo-Kopplung](https://developer.sumup.com/terminal-payments/cloud-api#pairing-solo-reader-via-cloud-api),
+[Reader anlegen und auflisten](https://developer.sumup.com/api/readers).
+Der Installer übernimmt die Reader-ID; er führt die Kopplung nicht selbst durch.
+
+### Betrieb und Belege
+
+Das Solo muss online sein; SumUp empfiehlt für die Cloud API eine dauerhafte
+Stromversorgung. WLAN und eine für die Cloud API geeignete Firmware/Kontofreigabe
+sind nötig. [SumUp Cloud API](https://developer.sumup.com/terminal-payments/cloud-api)
+
+Die Anwendung nutzt den PDF-Beleg zum Drucken am Praxisdrucker. Einen automatischen
+Druckdialog am Solo oder dessen Druckstation löst sie nicht aus. E-Mail-Belege werden
+auf Klick über den im Installer eingerichteten SMTP-Server verschickt.
 
 Die Anwendung sendet ausschließlich Betrag, EUR, neutrale Referenz und erforderliche
-technische Affiliate-Metadaten. Patient und Leistungsbezeichnungen werden nie an SumUp
-gesendet. Keine Kartendaten werden lokal gespeichert.
-
-- [SumUp Cloud API](https://developer.sumup.com/terminal-payments/cloud-api)
-- [Reader API](https://developer.sumup.com/api/readers)
-- [Transactions API](https://developer.sumup.com/api/transactions)
-- [Receipts API](https://developer.sumup.com/api/receipts)
+technische Affiliate-Metadaten an SumUp. Patient und Leistungsbezeichnungen werden nie
+an SumUp gesendet. Keine Kartendaten werden lokal gespeichert.
 
 ## Fehler und erneute Versuche
 
@@ -196,7 +289,7 @@ gesendet. Keine Kartendaten werden lokal gespeichert.
   SumUp-ID oder die vor dem Start gespeicherte neutrale Referenz ab.
 - Erfolg wird über den Transaktionsstatus mit passendem Händler, Referenz, Betrag und EUR
   bestätigt. Ein angenommener Abbruchauftrag allein gilt noch nicht als Abbruch.
-- FHIR wird ausschließlich durch den Dokumentationsbutton aufgerufen; Polling schreibt nie.
+- FHIR-Schreibzugriffe erfolgen ausschließlich durch den Dokumentationsbutton; Polling schreibt nie.
 - Bei eindeutiger Ablehnung bleibt die Zahlung bezahlt und der Button erlaubt einen neuen
   Dokumentationsversuch. Nach bestätigtem Schreiben wird kein zweiter Eintrag erzeugt.
 - Wenn die FHIR-Antwort verloren geht, prüft ein erneuter Klick zuerst den vorhandenen
@@ -270,7 +363,7 @@ bash scripts/build-client.sh
 ```
 
 GitHub Actions prüft diese Abläufe und baut die Starter für Windows, macOS und Linux.
-Ein Tag `v1.0` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
+Ein Tag `v1.1` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
 
 ## Stand der Integration
 

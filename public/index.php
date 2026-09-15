@@ -21,7 +21,14 @@ $version = htmlspecialchars(trim(file_get_contents(dirname(__DIR__) . '/VERSION'
 <section id="manager" class="card" hidden><div class="section-heading"><h2>Leistungen verwalten</h2><button id="manage-close" class="text-button">Fertig</button></div><div id="manage-list"></div>
 <form id="service-form"><input id="service-id" type="hidden"><label for="service-label">Bezeichnung</label><input id="service-label" required maxlength="160" placeholder="z. B. Attest"><label for="service-price">Preis in Euro</label><input id="service-price" required inputmode="decimal" placeholder="10,00" maxlength="12"><div class="actions"><button class="primary" type="submit" id="service-save">Leistung hinzufügen</button><button id="edit-reset" type="button" class="secondary" hidden>Abbrechen</button></div></form></section>
 <section id="payment" class="card payment-card" hidden aria-live="polite"><span id="status-symbol" class="status-symbol" aria-hidden="true">…</span><h2 id="payment-title"></h2><p id="payment-description"></p><strong id="payment-amount" class="payment-amount"></strong><p id="payment-reference" class="muted reference"></p><p id="payment-error" class="inline-error" hidden></p>
-<button id="document" class="primary wide" hidden>Dokumentation in der Akte</button><button id="retry" class="primary wide" hidden>Erneut versuchen</button><button id="cancel" class="text-button" hidden>Zahlung abbrechen</button>
+<button id="receipt" class="secondary wide" hidden>Zahlungsbeleg drucken</button><button id="document" class="primary wide" hidden>Dokumentation in der Akte</button><button id="retry" class="primary wide" hidden>Erneut versuchen</button><button id="cancel" class="text-button" hidden>Zahlung abbrechen</button>
+<button id="receipt-share" class="text-button" hidden>Beleglink / E-Mail</button>
+<div id="receipt-share-panel" class="receipt-share" hidden>
+<p id="receipt-share-message" class="muted" role="status"></p>
+<div id="receipt-share-details" hidden><label for="receipt-link">SumUp-Beleglink</label><input id="receipt-link" type="text" readonly>
+<div class="actions"><a id="receipt-open" target="_blank" rel="noopener noreferrer">Beleg öffnen</a><button id="receipt-copy" type="button" class="text-button">Link kopieren</button></div>
+<form id="receipt-email-form"><label for="receipt-email">E-Mail-Adresse</label><input id="receipt-email" type="email" autocomplete="off" maxlength="254" required placeholder="name@beispiel.de">
+<p class="muted">Adresse prüfen. Das Mailprogramm öffnet eine Nachricht mit dem Beleglink; dort wird sie versendet.</p><button type="submit" class="secondary">E-Mail vorbereiten</button></form></div></div>
 <div id="mock-controls" class="mock-controls" hidden><span class="eyebrow">TERMINAL SIMULIEREN</span><div class="actions"><button id="mock-success" class="secondary">Zahlung erfolgreich</button><button id="mock-fail" class="secondary">Zahlung abgelehnt</button></div></div>
 <label id="mock-fhir-label" class="mock-option" hidden><input type="checkbox" id="mock-fhir-fail"> t2med-Fehler simulieren</label>
 </section></div>

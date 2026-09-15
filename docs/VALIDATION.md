@@ -2,6 +2,17 @@
 
 Stand: 13. September 2026.
 
+Belegerweiterung vom 15. September 2026: PHP-Kernprüfungen und Syntaxprüfungen
+bestanden. Ergänzt sind Belegzuordnung nach Transaktion, Händler, Betrag und Status,
+wiederholter Abruf ohne neue Zahlung/Aktendokumentation, erlaubte SumUp-Beleglinks
+und bevorzugte E-Mail-Adresse aus FHIR. Im separaten Chrome-Testbrowser geprüft:
+Button erst nach Erfolg, eigenes Druckfenster, Testbeleg-Kennzeichnung auch im
+Drucklayout, Abweisung ohne Browsersitzung sowie Linkanzeige und E-Mail-Vorschlag.
+Browser-Linkdaten waren kontrollierte Testantworten. Es wurden keine E-Mails
+versendet und keine echten Beleglinks geöffnet. Tatsächliche Bereitstellung eines
+Beleglinks und Live-Belegdaten des konkreten SumUp-Kontos müssen beim Anwender
+geprüft werden; es werden keine Links aus Transaktions-IDs erfunden.
+
 Ergänzung vom 15. September 2026: `python3 tests/tls-pin.py` mit echten lokalen
 TLS-Verbindungen bestanden. Ein selbstsigniertes V1-Zertifikat ohne Erweiterungen/SAN
 wird nur bei aktivierter Schlüsselbindung akzeptiert. Ein anderer öffentlicher Schlüssel

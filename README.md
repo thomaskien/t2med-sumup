@@ -15,6 +15,8 @@ dokumentieren. **Version 0.1**, von Dr. Thomas Kienzle.
 2. Leistungen auswählen oder einen sonstigen Betrag eingeben.
 3. **Mit Karte kassieren** anklicken und Zahlung am Solo durchführen.
 4. Die Seite zeigt den von SumUp bestätigten Zahlungsstatus.
+   Bei Bedarf **Zahlungsbeleg drucken** anklicken: Ein eigenes Fenster lädt die
+   SumUp-Belegdaten und öffnet den Druckdialog für Praxisdrucker oder PDF.
 5. **Dokumentation in der Akte** schreibt einen Freitext-Eintrag und schließt den Vorgang ab.
    Das Fenster wird anschließend nach Möglichkeit geschlossen; andernfalls bleibt die
    Abschlussmeldung sichtbar und das Fenster kann manuell geschlossen werden.
@@ -22,6 +24,21 @@ dokumentieren. **Version 0.1**, von Dr. Thomas Kienzle.
 **Leistungen verwalten** öffnet die Bearbeitung auf derselben Seite. Leistungen lassen sich
 anlegen, bearbeiten und löschen. Löschen entfernt sie aus der Auswahl; gespeicherte
 Zahlungen behalten ihre damaligen Bezeichnungen und Preise.
+
+**Beleglink / E-Mail** ruft einen von SumUp zur Zahlung gelieferten Beleglink ab,
+sofern vorhanden. Er lässt sich öffnen, kopieren oder über **E-Mail vorbereiten**
+im vorhandenen Mailprogramm weitergeben. Die bevorzugte aktuelle E-Mail-Adresse
+wird bei diesem Klick aus t2med geladen und kann vor dem Versand geändert werden.
+Das Mailprogramm versendet die Nachricht; die Anwendung übermittelt keine
+Empfängeradresse an SumUp und benötigt keine SMTP-Konfiguration. Nach Abschluss
+der Aktendokumentation ist der t2med-Zugriff beendet; dann kann die Adresse nur
+noch manuell eingetragen werden. Wenn SumUp keinen Link liefert, bleibt der
+eigene Druckbeleg verfügbar. Im Testmodus ist dieser deutlich als Testbeleg markiert.
+
+Belegabruf, Drucken und Mailvorbereitung lösen weder eine neue Zahlung noch einen
+Akteneintrag aus und können wiederholt werden. Belege werden nur innerhalb der
+berechtigten Browsersitzung für erfolgreich bestätigte Zahlungen geladen.
+Der SumUp-Key benötigt für die Belegdaten `receipts.read` oder `transactions.history`.
 
 Kein Hintergrundjob und kein Webhook. Bei geschlossenem Browser findet keine weitere
 Statusabfrage oder automatische Dokumentation statt. Erneut aus demselben t2med-Kontext
@@ -161,6 +178,7 @@ gesendet. Keine Kartendaten werden lokal gespeichert.
 - [SumUp Cloud API](https://developer.sumup.com/terminal-payments/cloud-api)
 - [Reader API](https://developer.sumup.com/api/readers)
 - [Transactions API](https://developer.sumup.com/api/transactions)
+- [Receipts API](https://developer.sumup.com/api/receipts)
 
 ## Fehler und erneute Versuche
 

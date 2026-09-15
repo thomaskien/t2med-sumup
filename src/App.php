@@ -186,6 +186,27 @@ final class App {
     private function payment(array $visit, string $id): array {
         return $this->db->one('SELECT * FROM payments WHERE id=? AND visit_id=?', [$id, $visit['id']]) ?? throw new Problem('Zahlung nicht gefunden.', 404);
     }
+    public function receipt(array $visit, string $id): array {
+        $payment = $this->payment($visit, $id);
+        if ($payment['payment_status'] !== 'successful') throw new Problem('Ein Beleg ist erst nach bestätigter erfolgreicher Zahlung verfügbar.', 409);
+        return $this->sumup->receipt($payment);
+    }
+    public function receiptShare(array $visit, string $id): array {
+        $payment = $this->payment($visit, $id);
+        if ($payment['payment_status'] !== 'successful') throw new Problem('Ein Beleg ist erst nach bestätigter erfolgreicher Zahlung verfügbar.', 409);
+        $url = $this->sumup->receiptLink($payment);
+        if ($url === '') return ['url' => '', 'email' => '', 'message' => $this->config->get('sumup', 'mode') === 'mock'
+            ? 'Im Testmodus gibt es keinen echten SumUp-Beleglink.' : 'SumUp liefert für diese Zahlung keinen Beleglink. Der Zahlungsbeleg kann weiterhin gedruckt oder als PDF gespeichert werden.'];
+        $email = ''; $message = '';
+        if ($visit['oauth_cipher'] !== '') {
+            try {
+                $patient = $this->fhir->patient($visit['context_id'], $this->decrypt($visit['oauth_cipher']));
+                if ($patient['id'] === $visit['patient_id']) $email = $patient['email'] ?? '';
+                else $message = 'Die E-Mail-Adresse konnte nicht eindeutig dem Patienten zugeordnet werden. Bitte selbst eintragen.';
+            } catch (Problem) { $message = 'Die E-Mail-Adresse konnte nicht aus t2med geladen werden. Bitte selbst eintragen.'; }
+        }
+        return ['url' => $url, 'email' => $email, 'message' => $message];
+    }
     public function poll(array $visit, string $id): array {
         return $this->db->locked('payment-' . $id, function () use ($visit, $id): array {
             $payment = $this->payment($visit, $id);

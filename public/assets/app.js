@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const euro = cents => new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'}).format(cents / 100);
 let state = null, visitId = new URL(location.href).searchParams.get('v'), csrf = '', timer = null, busy = false;
 let selected = new Set(), retrySelection = false, startRequest = null;
+let receiptShare = null;
 function message(text='') { $('message').textContent = text; $('message').hidden = !text; }
 async function api(action, data={}) {
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 75000);
@@ -56,9 +57,12 @@ function renderPayment() {
   const p = state.payment; const showing = p && !retrySelection;
   $('selection').hidden=!!showing; $('payment').hidden=!showing;
   if (showing) manage(false);
-  for (const id of ['document','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
+  for (const id of ['document','receipt','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
+  if(!showing || p.payment_status!=='successful' || receiptShare?.paymentId!==p.id) { $('receipt-share-panel').hidden=true; receiptShare=null; }
   clearTimeout(timer);
   if (!showing) return;
+  $('receipt').hidden=p.payment_status!=='successful';
+  $('receipt-share').hidden=p.payment_status!=='successful';
   $('payment-amount').textContent=euro(p.amount_cents); $('payment-reference').textContent=p.reference;
   $('payment-error').textContent=p.error_message; $('payment-error').hidden=!p.error_message;
   let title, description, symbol='…';
@@ -67,7 +71,7 @@ function renderPayment() {
     description=state.fhir_mock ? 'Testdokumentation gespeichert. Es wurde nichts in t2med geschrieben. Dieses Fenster kann geschlossen werden.' : 'Die Zahlung wurde in t2med dokumentiert. Dieses Fenster kann geschlossen werden.';
   } else if(p.payment_status==='successful') {
     title='Zahlung erfolgreich'; symbol='✓';
-    description='Mit dem folgenden Klick wird die Zahlung in der Akte dokumentiert und der Vorgang abgeschlossen.';
+    description='Mit „Dokumentation in der Akte“ wird die Zahlung in t2med dokumentiert und der Vorgang abgeschlossen.';
     $('document').hidden=false;
     $('document').textContent=p.doc_status==='unknown' || p.doc_status==='writing' ? 'Dokumentation prüfen / erneut versuchen' : 'Dokumentation in der Akte';
     $('mock-fhir-label').hidden=!state.mock;
@@ -111,6 +115,35 @@ $('pay').onclick=()=>run(async()=>{
 });
 $('retry').onclick=()=>{ retrySelection=true; startRequest=null; renderPayment(); updateTotal(); };
 $('cancel').onclick=()=>run(async()=>{ state.payment=await api('cancel',{payment_id:state.payment.id}); });
+$('receipt').onclick=()=>{
+  if(busy || state?.payment?.payment_status!=='successful') return;
+  const query=new URLSearchParams({v:visitId,p:state.payment.id});
+  window.open('/receipt.php?'+query, '_blank', 'noopener,noreferrer');
+};
+$('receipt-share').onclick=()=>run(async()=>{
+  const paymentId=state.payment.id;
+  const result=await api('receipt_share',{payment_id:paymentId});
+  receiptShare={...result,paymentId};
+  $('receipt-share-panel').hidden=false;
+  $('receipt-share-message').textContent=result.message;
+  $('receipt-share-details').hidden=!result.url;
+  $('receipt-link').value=result.url;
+  if(result.url) $('receipt-open').href=result.url; else $('receipt-open').removeAttribute('href');
+  $('receipt-email').value=result.email;
+});
+$('receipt-copy').onclick=()=>run(async()=>{
+  if(!receiptShare?.url) return;
+  try { await navigator.clipboard.writeText(receiptShare.url); $('receipt-share-message').textContent='Beleglink kopiert.'; }
+  catch { $('receipt-link').focus(); $('receipt-link').select(); $('receipt-share-message').textContent='Bitte den markierten Link kopieren.'; }
+});
+$('receipt-email-form').onsubmit=e=>{
+  e.preventDefault();
+  if(busy || !receiptShare?.url || receiptShare.paymentId!==state.payment.id) return;
+  const email=$('receipt-email').value.trim();
+  if(!email || /[\r\n]/.test(email) || !$('receipt-email-form').reportValidity()) return;
+  const body='Guten Tag,\r\n\r\nhier finden Sie Ihren Zahlungsbeleg über '+euro(state.payment.amount_cents)+':\r\n'+receiptShare.url+'\r\n\r\nMit freundlichen Grüßen';
+  location.href='mailto:'+encodeURIComponent(email)+'?subject='+encodeURIComponent('Ihr Zahlungsbeleg')+'&body='+encodeURIComponent(body);
+};
 $('document').onclick=()=>run(async()=>{
   state.payment=await api('document',{payment_id:state.payment.id}); renderPayment();
   if(state.payment.doc_status==='written') { state.completed=true; setTimeout(()=>window.close(),900); }

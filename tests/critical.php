@@ -42,20 +42,27 @@ final class FakeHttp extends HttpClient {
     public bool $patientUnavailable=false;
     public ?array $record=null;
     public string $reference='';
+    public int $receiptStatus=200;
+    public array $receiptChanges=[];
+    public array $links=[];
     public function request(string $method,string $url,array $headers,?array $body=null,string $caFile='',bool $pinCertificate=false):array {
         $this->calls[]=[$method,$url,$headers,$body];
         if (str_contains($url,'api.sumup.com')) {
+            if (str_contains($url,'/v1.1/receipts/')) return ['status'=>$this->receiptStatus,'body'=>[
+                'transaction_data'=>array_replace(['transaction_id'=>'transaction-1','merchant_code'=>'MTEST','amount'=>'16.00','currency'=>'EUR','status'=>'SUCCESSFUL','timestamp'=>'2026-09-15T10:00:00Z','transaction_code'=>'TTEST','card'=>['type'=>'VISA','last_4_digits'=>'1234','number'=>'must-not-leak']],$this->receiptChanges),
+                'merchant_data'=>['merchant_profile'=>['merchant_code'=>'MTEST','business_name'=>'Musterpraxis','address'=>['address_line1'=>'Teststraße 1','post_code'=>'12345','city'=>'Musterstadt']]]]];
             if ($method==='POST' && str_ends_with($url,'/checkout')) {
                 $this->reference=$body['affiliate']['foreign_transaction_id'];
                 if ($this->startLost) throw new TransportError('Verbindung unterbrochen.',true);
                 return ['status'=>201,'body'=>['data'=>['checkout_id'=>'checkout-1','client_transaction_id'=>'client-1']]];
             }
             if (!$this->paymentFound) return ['status'=>404,'body'=>[]];
-            return ['status'=>200,'body'=>['id'=>'transaction-1','client_transaction_id'=>'client-1','foreign_transaction_id'=>$this->reference,'merchant_code'=>'MTEST','currency'=>'EUR','amount'=>$this->wrongAmount ? 1 : 16,'status'=>'SUCCESSFUL']];
+            return ['status'=>200,'body'=>['id'=>'transaction-1','client_transaction_id'=>'client-1','foreign_transaction_id'=>$this->reference,'merchant_code'=>'MTEST','currency'=>'EUR','amount'=>$this->wrongAmount ? 1 : 16,'status'=>'SUCCESSFUL','links'=>$this->links]];
         }
         if (str_contains($url,'/Patient?')) {
             if ($this->patientUnavailable) throw new TransportError('Zertifikat-Testfehler (cURL 60)',false);
-            return ['status'=>200,'body'=>['resourceType'=>'Patient','id'=>'patient-1','name'=>[['given'=>['Erika'],'family'=>'Musterfrau']]]];
+            return ['status'=>200,'body'=>['resourceType'=>'Patient','id'=>'patient-1','name'=>[['given'=>['Erika'],'family'=>'Musterfrau']],
+                'telecom'=>[['system'=>'email','value'=>'old@example.invalid','use'=>'old','rank'=>1],['system'=>'email','value'=>'second@example.invalid','rank'=>2],['system'=>'email','value'=>'erika@example.invalid','rank'=>1],['system'=>'phone','value'=>'12345']]]];
         }
         if (str_ends_with($url,'/metadata')) return ['status'=>200,'body'=>['resourceType'=>'CapabilityStatement','rest'=>[['mode'=>'server','resource'=>[['type'=>'Observation','conditionalCreate'=>$this->conditional]]]]]];
         if (str_contains($url,'/Observation?')) return ['status'=>200,'body'=>['resourceType'=>'Bundle','entry'=>$this->existingRecord && $this->record ? [['resource'=>['id'=>'record-1']+$this->record]] : []]];
@@ -85,6 +92,8 @@ try {
     $cfg=configuration();$dirs[]=$cfg->get('app','state_dir');$app=new App($cfg);$app->db->migrate();
     [$v,$b]=visit($app);$input=prepare($app,$v);
     $p=$app->start($v,$input+['amount_cents'=>1]);check($p['amount_cents']===1600,'Browserbetrag vertraut');
+    rejects(fn()=>$app->receipt($v,$p['id']),'Beleg vor erfolgreicher Zahlung');
+    rejects(fn()=>$app->receiptShare($v,$p['id']),'Beleglink vor erfolgreicher Zahlung');
     check($app->start($v,$input)['id']===$p['id'],'Doppelstart');
     $changed=$input;$changed['manual_amount']='2';rejects(fn()=>$app->start($v,$changed),'Idempotenzschlüssel mit geändertem Inhalt akzeptiert');
     $app->deleteService($v,$input['services'][0]);
@@ -92,6 +101,8 @@ try {
     [$v2,$b2]=visit($app,'other');rejects(fn()=>$app->visit($b2,$v['id']),'Fremder Browser erhält Patientenkontext');
     rejects(fn()=>$app->start($v2,['request_id'=>App::id(),'services'=>[],'manual_amount'=>'1']),'Terminal-Doppelbelegung');
     $app->mock($v,['payment_id'=>$p['id'],'status'=>'successful']);
+    check($app->receipt($v,$p['id'])['mock']===true,'Testbeleg nicht markiert');
+    rejects(fn()=>$app->receipt($v2,$p['id']),'Beleg für fremden Vorgang zugänglich');
     check($app->poll($v,$p['id'])['payment_status']==='successful','Mockzahlung nicht erfolgreich');
     check((int)$app->db->query('SELECT COUNT(*) FROM mock_records')->fetchColumn()===0,'Polling dokumentiert automatisch');
     $app->mock($v,['document_fail'=>true]);$v=$app->visit($b,$v['id']);
@@ -135,6 +146,27 @@ try {
     check($app->db->one('SELECT payment_status FROM payments WHERE id=?',[$p['id']])['payment_status']==='unknown','Falscher Betrag akzeptiert');
     $app->db->query('UPDATE payments SET checked_at=0 WHERE id=?',[$p['id']]);$http->wrongAmount=false;
     check($app->poll($v,$p['id'])['payment_status']==='successful','Wiederabgleich fehlgeschlagen');
+    $paymentBefore=$app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']]);
+    $postsBefore=$http->posts('api.sumup.com');$fhirBefore=$http->posts('t2med.test');
+    $receipt=$app->receipt($v,$p['id']);$app->receipt($v,$p['id']);
+    check($receipt['amount_cents']===1600 && $receipt['card_last4']==='1234' && !$receipt['mock'],'Zahlungsbeleg falsch');
+    check(!str_contains(json_encode($receipt),'must-not-leak'),'Unzulässige Kartendaten im Beleg');
+    foreach (['transaction_id'=>'wrong','merchant_code'=>'wrong','amount'=>'0.01','currency'=>'USD','status'=>'REFUNDED'] as $key=>$value) {
+        $http->receiptChanges=[$key=>$value];rejects(fn()=>$app->receipt($v,$p['id']),'Abweichender Beleg akzeptiert: '.$key);
+    }
+    $http->receiptChanges=[];$http->receiptStatus=404;
+    rejects(fn()=>$app->receipt($v,$p['id']),'Fehlender Beleg akzeptiert');
+    $http->receiptStatus=200;check($app->receipt($v,$p['id'])['amount_cents']===1600,'Belegabruf nicht wiederholbar');
+    $url='https://receipts-ng.sumup.com/v0.1/receipts/transaction-1?mid=MTEST&format=png';
+    $http->links=[['rel'=>'receipt','href'=>$url]];
+    $share=$app->receiptShare($v,$p['id']);check($share['url']===$url && $share['email']==='erika@example.invalid','Beleglink oder bevorzugte t2med-E-Mail fehlt');
+    foreach (['https://evil.example/receipt','https://receipts-ng.sumup.com.evil.example/x','javascript:alert(1)','https://secret@receipts-ng.sumup.com/x','https://api.sumup.com/v1.1/receipts/x'] as $bad) {
+        $http->links=[['rel'=>'receipt','href'=>$bad]];check($app->receiptShare($v,$p['id'])['url']==='','Unzulässiger Beleglink');
+    }
+    $http->links=[];check($app->receiptShare($v,$p['id'])['url']==='','Beleglink erfunden');
+    check($app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']])===$paymentBefore,'Belegabruf verändert Zahlung');
+    check($http->posts('api.sumup.com')===$postsBefore && $http->posts('t2med.test')===$fhirBefore,'Belegabruf erzeugt Zahlung oder Dokumentation');
+    echo "OK: Belegzuordnung, Wiederholung, Beleglink und E-Mail-Vorschlag ohne Schreibvorgänge.\n";
     foreach ($http->calls as $call) if(str_contains($call[1],'api.sumup.com')) {
         $json=json_encode($call[3]);check(!str_contains($json,'Attest')&&!str_contains($json,'Erika')&&!str_contains($json,'patient-1'),'Patientendaten an SumUp');
     }

@@ -16,7 +16,7 @@ final class FhirClient {
             $this->config->get('fhir', 'ca_file', ''), $this->config->get('fhir', 'pin_certificate', false));
     }
     public function patient(string $context, string $token): array {
-        if ($this->config->get('fhir', 'mode') === 'mock') return ['id' => 'demo-' . $context, 'name' => 'Erika Musterfrau', 'birthdate' => '1980-04-12'];
+        if ($this->config->get('fhir', 'mode') === 'mock') return ['id' => 'demo-' . $context, 'name' => 'Erika Musterfrau', 'birthdate' => '1980-04-12', 'email' => 'erika@example.invalid'];
         try {
             $result = $this->request('GET', '/Patient?' . http_build_query(['identifier' => self::CONTEXT . '|' . $context]), $token, null, true);
         } catch (TransportError $e) {
@@ -31,7 +31,11 @@ final class FhirClient {
         if (count($patients) !== 1 || empty($patients[0]['id'])) throw new Problem('Der Patientenkontext ist nicht eindeutig.', 502);
         $p = $patients[0]; $name = $p['name'][0] ?? [];
         $label = trim(implode(' ', $name['given'] ?? []) . ' ' . ($name['family'] ?? ''));
-        return ['id' => (string)$p['id'], 'name' => $label ?: 'Patient ' . $p['id'], 'birthdate' => $p['birthDate'] ?? ''];
+        $emails = array_filter(is_array($p['telecom'] ?? null) ? $p['telecom'] : [], static fn($contact) =>
+            is_array($contact) && ($contact['system'] ?? '') === 'email' && ($contact['use'] ?? '') !== 'old' &&
+            is_string($contact['value'] ?? null) && strlen($contact['value']) <= 254 && filter_var($contact['value'], FILTER_VALIDATE_EMAIL));
+        usort($emails, static fn($a, $b) => ($a['rank'] ?? PHP_INT_MAX) <=> ($b['rank'] ?? PHP_INT_MAX));
+        return ['id' => (string)$p['id'], 'name' => $label ?: 'Patient ' . $p['id'], 'birthdate' => $p['birthDate'] ?? '', 'email' => $emails[0]['value'] ?? ''];
     }
     public function resource(array $visit, array $payment): array {
         $zone = new \DateTimeZone($this->config->get('app', 'timezone'));

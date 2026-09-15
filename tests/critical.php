@@ -5,6 +5,7 @@ use KienzleSumup\{App,Config,HttpClient,Money,Problem,TransportError};
 
 function check(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function rejects(callable $fn, string $message): void { try { $fn(); } catch (Problem) { return; } throw new RuntimeException($message); }
+function rejectedProblem(callable $fn, string $message): Problem { try { $fn(); } catch (Problem $e) { return $e; } throw new RuntimeException($message); }
 function configuration(bool $live = false): Config {
     $v = Config::parse(file_get_contents(dirname(__DIR__).'/config/kienzle-sumup.example.toml'));
     $v['app']['state_dir'] = sys_get_temp_dir().'/kienzle-sumup-test-'.bin2hex(random_bytes(6));
@@ -89,7 +90,27 @@ try {
     check($app->db->one('SELECT oauth_cipher FROM visits WHERE id=?',[$v['id']])['oauth_cipher']==='','Token nach Abschluss behalten');
     echo "OK: Betrag, Leistungs-Snapshot, Startticket, Zugriff, Doppelstart, manuelle Dokumentation und Wiederholung.\n";
 
-    $cfg=configuration(true);$dirs[]=$cfg->get('app','state_dir');$http=new FakeHttp();$app=new App($cfg,$http);$app->db->migrate();[$v,$b]=visit($app);$input=prepare($app,$v);
+    $cfg=configuration(true);$dirs[]=$cfg->get('app','state_dir');$http=new FakeHttp();$app=new App($cfg,$http);$app->db->migrate();
+    $received='http://localhost:16567/aps/fhir/api/r4';$oauthMarker='oauth-token-must-stay-secret';
+    $problem=rejectedProblem(fn()=>$app->launch(['context_id'=>'rejected','oauth_token'=>$oauthMarker,'fhir_base_url'=>$received]),'Abweichende FHIR-Aufrufadresse akzeptiert');
+    $message=$problem->getMessage();
+    check(str_contains($message,"Von t2med (fhirBasisUrl): $received\n"),'Empfangene FHIR-Adresse fehlt in Diagnose');
+    check(str_contains($message,'Im Server erlaubt (launch_urls): https://t2med.test/aps/fhir/api/r4'),'Erlaubte FHIR-Adresse oder launch_urls fehlt in Diagnose');
+    check(!str_contains($message,$oauthMarker),'OAuth-Token in Diagnose offengelegt');
+    $unsafeAddresses=[
+        ['https://userinfo-secret@t2med.test/aps/fhir/api/r4','userinfo-secret'],
+        ['https://t2med.test/aps/fhir/api/r4?oAuthToken=query-secret','query-secret'],
+        ['https://t2med.test/aps/fhir/api/r4#fragment-secret','fragment-secret'],
+    ];
+    foreach ($unsafeAddresses as [$address,$marker]) {
+        $problem=rejectedProblem(fn()=>$app->launch(['context_id'=>'rejected','oauth_token'=>$oauthMarker,'fhir_base_url'=>$address]),'Unsichere FHIR-Aufrufadresse akzeptiert');
+        check(str_contains($problem->getMessage(),'[keine reine HTTP(S)-Basisadresse; Inhalt ausgeblendet]'),'Unsichere FHIR-Adresse nicht vollständig ausgeblendet');
+        check(!str_contains($problem->getMessage(),$marker),'Geheimer URL-Marker in Diagnose offengelegt');
+        check(!str_contains($problem->getMessage(),$oauthMarker),'OAuth-Token in Diagnose offengelegt');
+    }
+    check(count($http->calls)===0,'FHIR-Ablehnung löst HTTP-Aufruf aus');
+    check((int)$app->db->query('SELECT COUNT(*) FROM visits')->fetchColumn()===0,'FHIR-Ablehnung erzeugt Besuch');
+    [$v,$b]=visit($app);$input=prepare($app,$v);
     $http->startLost=true;$http->paymentFound=false;$p=$app->start($v,$input);check($p['payment_status']==='unknown','Verlorene Startantwort als Fehler interpretiert');
     $app->start($v,$input);check($http->posts('api.sumup.com')===1,'SumUp trotz gleicher ID erneut gestartet');
     $http->paymentFound=true;$http->wrongAmount=true;$app->poll($v,$p['id']);

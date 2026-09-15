@@ -118,6 +118,14 @@ vom PHP-Server erreichbare feste Ziel. Dadurch lässt sich eine im t2med-Aufruf 
 Client-Loopback-Adresse explizit auf den tatsächlich erreichbaren Praxisserver abbilden.
 Der Client kann keinen beliebigen FHIR-Server vorgeben.
 
+Zur Fehlerhilfe: `app.base_url` ist der Hostname der Zahlungsseite, `fhir.base_url` die
+feste FHIR-Zieladresse und `fhir.launch_urls` die Liste erlaubter t2med-Aufrufadressen.
+Die Fehlermeldung zeigt die tatsächlichen Werte; an diesen sollte sich die Korrektur
+orientieren. In der laufenden Installation nur `launch_urls` in
+`/etc/kienzle-sumup/kienzle-sumup.toml` um die verifizierte, reine t2med-Adresse ergänzen;
+dafür ist kein Dienstneustart nötig. Danach erneut aus t2med öffnen. Keine Schlüssel oder
+vollständigen Token-Links teilen.
+
 ## SumUp Solo einrichten
 
 Benötigt werden API-Key, Affiliate-Key, zugehörige App-ID, Händlercode und die ID eines

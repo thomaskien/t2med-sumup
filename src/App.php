@@ -37,7 +37,13 @@ final class App {
         $url = self::string($input, 'fhir_base_url', 1000, false);
         if ($this->config->get('fhir', 'mode') === 'live') {
             $allowed = array_map(static fn($u) => rtrim($u, '/'), $this->config->get('fhir', 'launch_urls', []));
-            if (!in_array(rtrim($url, '/'), $allowed, true)) throw new Problem('Diese t2med-Aufrufadresse ist nicht im Server-Installer freigegeben.');
+            if (!in_array(rtrim($url, '/'), $allowed, true)) {
+                $shown = array_map(self::diagnosticAddress(...), array_slice($allowed, 0, 5));
+                throw new Problem("Die von t2med übergebene FHIR-Adresse ist nicht freigegeben.\n" .
+                    'Von t2med (fhirBasisUrl): ' . self::diagnosticAddress($url) . "\n" .
+                    'Im Server erlaubt (launch_urls): ' . implode(', ', $shown) . "\n" .
+                    'Bitte [fhir].launch_urls in /etc/kienzle-sumup/kienzle-sumup.toml prüfen. Gemeint ist die FHIR-Adresse, nicht die Adresse der Zahlungswebseite.');
+            }
         }
         $patient = $this->fhir->patient($context, $token);
         $expires = time() + $this->config->get('app', 'session_hours') * 3600;
@@ -58,6 +64,18 @@ final class App {
             // Fragment wird weder an Apache übertragen noch in Zugriffslogs gespeichert.
             return ['url' => rtrim($this->config->get('app', 'base_url'), '/') . '/#launch=' . $ticket];
         });
+    }
+    private static function diagnosticAddress(string $url): string {
+        // Nur reine HTTP(S)-Basisadressen zurückgeben; keine Zugangsdaten,
+        // Queryparameter, Fragmente oder unkontrollierte Texte im Starterdialog.
+        $parts = parse_url($url);
+        if (!$parts || !in_array(strtolower($parts['scheme'] ?? ''), ['http', 'https'], true) ||
+            empty($parts['host']) || isset($parts['user']) || isset($parts['pass']) ||
+            isset($parts['query']) || isset($parts['fragment']) || strlen($url) > 240 ||
+            !preg_match('~^[A-Za-z0-9.\\[\\]:/_-]+$~D', $url)) {
+            return '[keine reine HTTP(S)-Basisadresse; Inhalt ausgeblendet]';
+        }
+        return $url;
     }
     public function exchange(string $ticket, ?string $cookie): array {
         if (!preg_match('/^[a-f0-9]{64}$/D', $ticket)) throw new Problem('Ungültiger Startlink.', 401);

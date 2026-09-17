@@ -61,6 +61,61 @@ mit `rsvg-convert` in PDF umgewandelt. Konverter und PHPMailer kommen als
 Distributionspakete (`librsvg2-bin`, `libphp-phpmailer`) über den Installer.
 Im Testmodus wird ein markierter Testbeleg erzeugt und kein SMTP-Versand ausgeführt.
 
+## Optionaler Direktdruck auf den Epson TM-m10
+
+**Beleg drucken** übergibt den SumUp-Originalbeleg direkt an den TM-m10 mit 58-mm-Rolle.
+Der Button erscheint nur nach erfolgreicher Zahlung und bei aktiviertem Direktdruck.
+Ein Klick druckt, anschließend ist ein bewusster Nachdruck möglich. PDF-Anzeige,
+E-Mail und Aktendokumentation bleiben unabhängig davon bedienbar.
+
+Im Server-Installer **Direktdruck auf Epson TM-m10 über Samba aktivieren** mit `ja`
+beantworten. Er fragt Freigabe, Druckbreite und Schnitt ab. Enter behält vorhandene
+Werte; bei einer neuen Installation ist der Direktdruck ausgeschaltet. Unter
+`/etc/kienzle-sumup/kienzle-sumup.toml` lassen sich dieselben Werte einstellen:
+
+```toml
+[printing]
+enabled = true
+share = "//kienzlebox/TMm10"
+width_dots = 420
+cut = true
+```
+
+- `enabled = false` deaktiviert den Direktdruck und blendet den Button aus.
+- `share` bezeichnet eine **RAW-Druckerfreigabe mit Gastzugriff ohne Passwort**.
+  In der TOML vorwärts gerichtete Schrägstriche verwenden; der Installer akzeptiert
+  auch `\\kienzlebox\TMm10` und wandelt die Schreibweise um.
+- `width_dots = 420` entspricht 52,5 mm bedruckbarer Breite auf der 58-mm-Rolle.
+  Kleinere Werte bis 128 sind möglich; die Belegproportionen bleiben erhalten.
+- `cut = true` erzeugt genau einen Schnitt am Auftragsende; `false` gibt nur Vorschub aus.
+
+Bei der ersten Aktivierung den Installer ausführen: Er ergänzt `php-gd` und
+`smbclient`. Danach genügt für Änderungen an `[printing]` das Speichern der TOML und
+Neuladen der Webseite. Ohne `[printing]` bleibt eine ältere Konfiguration weiterhin
+nutzbar und der Direktdruck aus. Der PDF-Konverter muss installiert und die
+Druckerfreigabe vom Anwendungsserver erreichbar sein.
+
+Der Server wandelt den Originalbeleg in Epson-ESC/POS-Grafikdaten um und sendet sie
+an Samba. Es wird kein weiterer CUPS-Dienst auf dem Anwendungsserver eingerichtet.
+**Druckauftrag übergeben** bestätigt die Annahme durch die Freigabe, nicht die
+tatsächliche Papierausgabe. Bei einer verlorenen Antwort prüft ein weiterer Klick
+denselben Auftrag – auch nach Neuladen. Bei unklarer Übergabe zuerst Drucker und
+Warteschlange prüfen, bevor ein neuer Nachdruck gestartet wird. Im Testmodus wird
+die Aufbereitung ausgeführt, aber nichts an den Drucker gesendet.
+
+Die bestehende Einrichtung der kienzlebox ist in
+[Drucker einrichten: Bluetooth, CUPS RAW und Samba](epson-tm-m10-bluetooth-linux-samba-macos.md)
+beschrieben. Die dauerhaft offene RFCOMM-Verbindung und die RAW-Warteschlange werden
+von kienzle-sumup nicht verändert. Kein zusätzliches AutoCut-Backend verwenden:
+Der Mac-Treiber beziehungsweise unser Direktdruck erzeugt den Schnitt bereits im
+jeweiligen Druckauftrag. Beim ersten Ausdruck Lesbarkeit, Länge und Schnitt prüfen.
+
+Für den passwortlosen Zugriff sind ergänzend zur Anleitung in der Samba-Konfiguration
+der kienzlebox `map to guest = Bad User` im bestehenden Abschnitt `[global]` und
+`guest ok = yes` im Abschnitt `[TMm10]` erforderlich, sofern noch nicht eingerichtet.
+Die Anwendung meldet sich als `guest` ohne Passwort an.
+[Samba: Gastzugriff](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPTOGUEST)
+
 Kein Hintergrundjob und kein Webhook. Bei geschlossenem Browser findet keine weitere
 Statusabfrage oder automatische Dokumentation statt. Erneut aus demselben t2med-Kontext
 öffnen setzt einen unvollständigen Vorgang fort. Ein neuer Behandlungskontext kann eine
@@ -272,7 +327,7 @@ Das Solo muss online sein; SumUp empfiehlt für die Cloud API eine dauerhafte
 Stromversorgung. WLAN und eine für die Cloud API geeignete Firmware/Kontofreigabe
 sind nötig. [SumUp Cloud API](https://developer.sumup.com/terminal-payments/cloud-api)
 
-Die Anwendung nutzt den PDF-Beleg zum Drucken am Praxisdrucker. Einen automatischen
+Die Anwendung bietet PDF-Druck und optionalen Direktdruck auf den TM-m10. Einen automatischen
 Druckdialog am Solo oder dessen Druckstation löst sie nicht aus. E-Mail-Belege werden
 auf Klick über den im Installer eingerichteten SMTP-Server verschickt.
 

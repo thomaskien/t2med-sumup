@@ -14,7 +14,7 @@ jobs:
       - uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
-          extensions: curl, pdo_sqlite, sodium
+          extensions: curl, pdo_sqlite, sodium, gd
           coverage: none
       - uses: actions/setup-go@v5
         with:
@@ -22,6 +22,7 @@ jobs:
           cache: false
       - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin libphp-phpmailer fonts-dejavu-core
       - run: php tests/critical.php
+      - run: php tests/print-format.php
       - run: php tests/mail-mime.php
       - run: python3 tests/tls-pin.py
       - run: find src public scripts -name '*.php' -exec php -l {} \;
@@ -36,11 +37,12 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install isolated server in mock mode
-        run: printf '\n\n\n\n\n' | sudo bash scripts/install-server.sh
+      - name: Install isolated server in mock mode with optional printing
+        run: printf '\n\n\n\n\nja\n\n\n\n' | sudo bash scripts/install-server.sh
       - name: Check HTTPS and PHP
         run: |
           sudo systemctl is-active kienzle-sumup-apache kienzle-sumup-php
+          php -r 'exit(extension_loaded("gd") && is_executable("/usr/bin/smbclient") ? 0 : 1);'
           sudo curl --fail --silent --show-error --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$(hostname):7868:127.0.0.1" "https://$(hostname):7868/" | grep -q 'Kartenzahlung'
       - name: Installer diagnostics
         if: failure()

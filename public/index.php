@@ -24,6 +24,8 @@ $version = htmlspecialchars(trim(file_get_contents(dirname(__DIR__) . '/VERSION'
 <button id="receipt" class="secondary wide" hidden>Zahlungsbeleg / PDF</button>
 <button id="receipt-mail" class="secondary wide" hidden>Beleg mailen</button>
 <p id="receipt-mail-status" class="muted" role="status" hidden></p>
+<button id="receipt-print" class="secondary wide" hidden>Beleg drucken</button>
+<p id="receipt-print-status" class="muted" role="status" hidden></p>
 <button id="document" class="primary wide" hidden>Dokumentation in der Akte</button><button id="retry" class="primary wide" hidden>Erneut versuchen</button><button id="cancel" class="text-button" hidden>Zahlung abbrechen</button>
 <button id="receipt-share" class="text-button" hidden>Beleglink / E-Mail-Adresse ändern</button>
 <div id="receipt-share-panel" class="receipt-share" hidden>

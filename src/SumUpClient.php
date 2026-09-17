@@ -33,17 +33,20 @@ final class SumUpClient {
         if ($code < 200 || $code >= 300) throw new TransportError($message . " (HTTP $code)", $code >= 500 || $code === 408 || $code < 400, $code);
     }
     public function receipt(array $payment): string {
+        return ReceiptPdf::convert($this->receiptSource($payment));
+    }
+    public function receiptSource(array $payment): string {
         if ($this->config->get('sumup', 'mode') === 'mock') {
             $amount = htmlspecialchars(Money::format($payment['amount_cents']), ENT_XML1, 'UTF-8');
             $reference = htmlspecialchars($payment['reference'], ENT_XML1, 'UTF-8');
-            return ReceiptPdf::convert('<svg xmlns="http://www.w3.org/2000/svg" width="380" height="240"><rect width="100%" height="100%" fill="white"/><g font-family="sans-serif" fill="black"><text x="20" y="35" font-size="19">TESTBELEG - keine echte Zahlung</text><text x="20" y="90" font-size="28">'.$amount.'</text><text x="20" y="130" font-size="14">Simulierte Kartenzahlung</text><text x="20" y="170" font-size="10">'.$reference.'</text></g></svg>');
+            return '<svg xmlns="http://www.w3.org/2000/svg" width="380" height="240"><rect width="100%" height="100%" fill="white"/><g font-family="sans-serif" fill="black"><text x="20" y="35" font-size="19">TESTBELEG - keine echte Zahlung</text><text x="20" y="90" font-size="28">'.$amount.'</text><text x="20" y="130" font-size="14">Simulierte Kartenzahlung</text><text x="20" y="170" font-size="10">'.$reference.'</text></g></svg>';
         }
         $url = $this->receiptLink($payment);
         if ($url === '') throw new Problem('SumUp liefert für diese Zahlung keinen Originalbeleg-Link.', 502);
         try { $response = $this->http->download($url); }
         catch (TransportError) { throw new Problem('Der SumUp-Originalbeleg konnte nicht geladen werden. Bitte erneut versuchen.', 502); }
         if ($response['status'] !== 200) throw new Problem('Der SumUp-Originalbeleg ist noch nicht verfügbar. Bitte erneut versuchen.', 502);
-        return ReceiptPdf::convert($response['body']);
+        return $response['body'];
     }
     public function receiptLink(array $payment): string {
         if ($this->config->get('sumup', 'mode') === 'mock') return '';

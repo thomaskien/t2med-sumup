@@ -51,6 +51,15 @@ final class Config {
         }
         $entry = $this->get('fhir', 'entry_code', 'ZAHLUNG');
         if (!is_string($entry) || $entry === '' || mb_strlen($entry) > 20) throw new \RuntimeException('Aktenkürzel muss 1–20 Zeichen lang sein.');
+        foreach (['enabled' => false, 'cut' => true] as $key => $default) {
+            if (!is_bool($this->get('printing', $key, $default))) throw new \RuntimeException('printing.' . $key . ' muss true oder false sein.');
+        }
+        if ($this->get('printing', 'enabled', false)) {
+            $share = $this->get('printing', 'share');
+            if (!is_string($share) || !preg_match('~^//[A-Za-z0-9][A-Za-z0-9.-]{0,252}/[A-Za-z0-9][A-Za-z0-9 ._-]{0,79}$~D', $share)) throw new \RuntimeException('Druckerfreigabe als //server/drucker angeben.');
+            $width = $this->get('printing', 'width_dots', 420);
+            if (!is_int($width) || $width < 128 || $width > 420) throw new \RuntimeException('TM-m10-Druckbreite muss 128 bis 420 Punkte betragen.');
+        }
         if (!is_bool($this->get('mail', 'enabled', false))) throw new \RuntimeException('mail.enabled muss true oder false sein.');
         if ($this->get('mail', 'enabled', false)) {
             if (!is_string($this->get('mail', 'host')) || !preg_match('/^[A-Za-z0-9.-]+$/D', $this->get('mail', 'host'))) throw new \RuntimeException('SMTP-Hostname ist ungültig.');

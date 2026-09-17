@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
-use KienzleSumup\{App,Config,HttpClient,Money,Problem,TransportError,ReceiptMailer};
+use KienzleSumup\{App,Config,HttpClient,Money,Problem,TransportError,ReceiptMailer,ReceiptPrinter};
 
 function check(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function rejects(callable $fn, string $message): void { try { $fn(); } catch (Problem) { return; } throw new RuntimeException($message); }
@@ -84,6 +84,15 @@ final class FakeMailer extends ReceiptMailer {
         check(str_starts_with($pdf,'%PDF-'),'Mail-Anhang ist kein PDF');
         $this->sent++;
         if($this->lost) throw new Problem('Versandantwort verloren.',502);
+    }
+}
+final class FakePrinter extends ReceiptPrinter {
+    public int $sent=0;
+    public bool $lost=false;
+    public function send(string $data):void {
+        check(str_starts_with($data,"\x1b\x40\x1d\x28\x4c"),'Druckdaten sind kein ESC/POS');
+        $this->sent++;
+        if($this->lost) throw new Problem('Druckantwort verloren.',502);
     }
 }
 $dirs=[];
@@ -194,6 +203,26 @@ try {
     check($app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']])===$paymentBefore,'Mailversand verändert Zahlung');
     check($http->posts('t2med.test')===$fhirBefore,'Mailversand schreibt Akteneintrag');
     echo "OK: PDF-Anhang, Migration, Versandwiederholung und verlorene SMTP-Antwort.\n";
+    // Direktdruck: bestehende Zahlungen erhalten, standardmäßig aus, keine Doppelübergabe.
+    $app->db->query('DROP TABLE receipt_prints');$app->db->query('PRAGMA user_version=2');$app->db->migrate();
+    $printInput=['payment_id'=>$p['id'],'request_id'=>App::id()];
+    rejects(fn()=>$app->receiptPrint($v,$printInput),'Direktdruck trotz deaktivierter Funktion');
+    $values=$cfg->values;$values['printing']=['enabled'=>true,'share'=>'//kienzlebox/TMm10','width_dots'=>420,'cut'=>true];
+    $printConfig=new Config($values);$printer=new FakePrinter($printConfig);$printApp=new App($printConfig,$http,null,$printer);
+    check($printApp->receiptPrint($v,$printInput)['status']==='submitted','Druckauftrag nicht übergeben');
+    $printApp->receiptPrint($v,$printInput);check($printer->sent===1,'Gleicher Druckauftrag doppelt gesendet');
+    $printer->lost=true;$printInput['request_id']=App::id();
+    check($printApp->receiptPrint($v,$printInput)['status']==='unknown','Unklare Druckantwort als Erfolg');
+    $printApp->receiptPrint($v,$printInput);check($printer->sent===2,'Unklarer Druck blind wiederholt');
+    $printer->lost=false;$printInput['request_id']=App::id();
+    check($printApp->receiptPrint($v,$printInput)['status']==='submitted','Bewusster Nachdruck nicht möglich');
+    $foreign=$v;$foreign['id']=App::id();rejects(fn()=>$printApp->receiptPrint($foreign,$printInput),'Fremder Beleg gedruckt');
+    $app->db->query("UPDATE payments SET payment_status='pending' WHERE id=?",[$p['id']]);
+    rejects(fn()=>$printApp->receiptPrint($v,['payment_id'=>$p['id'],'request_id'=>App::id()]),'Druck vor Zahlungserfolg');
+    $app->db->query("UPDATE payments SET payment_status='successful' WHERE id=?",[$p['id']]);
+    check($app->db->one('SELECT * FROM payments WHERE id=?',[$p['id']])===$paymentBefore,'Direktdruck verändert Zahlung');
+    check($http->posts('t2med.test')===$fhirBefore && $http->posts('api.sumup.com')===$postsBefore,'Direktdruck schreibt Akte oder Zahlung');
+    echo "OK: Optionaler Direktdruck, Migration, Nachdruck, verlorene Antwort und Zuordnung.\n";
     foreach ($http->calls as $call) if(str_contains($call[1],'api.sumup.com')) {
         $json=json_encode($call[3]);check(!str_contains($json,'Attest')&&!str_contains($json,'Erika')&&!str_contains($json,'patient-1'),'Patientendaten an SumUp');
     }

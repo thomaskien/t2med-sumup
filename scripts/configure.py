@@ -109,6 +109,17 @@ def main():
         mail['from_address'] = ask('Absender-E-Mail-Adresse',mail['from_address'])
         mail['from_name'] = ask('Absendername / Praxisname',mail['from_name'])
     config['mail'] = mail
+    printing = {key:get('printing',key,default) for key,default in {'enabled':False,'share':'//kienzlebox/TMm10','width_dots':420,'cut':True}.items()}
+    answer = ask('Direktdruck auf Epson TM-m10 über Samba aktivieren (ja/nein)', 'ja' if printing['enabled'] else 'nein')
+    if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+    printing['enabled'] = answer == 'ja'
+    if printing['enabled']:
+        printing['share'] = ask('Samba-Druckerfreigabe (Gastzugriff ohne Passwort)',printing['share']).replace('\\','/')
+        printing['width_dots'] = int(ask('Druckbreite in Punkten (TM-m10 mit 58 mm: 420)',str(printing['width_dots'])))
+        answer = ask('Bon nach dem Drucken schneiden (ja/nein)', 'ja' if printing['cut'] else 'nein')
+        if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+        printing['cut'] = answer == 'ja'
+    config['printing'] = printing
     text = '# Kienzle-SumUp · Zugangsdaten nicht weitergeben.\n'
     for section, values in config.items():
         text += '\n['+section+']\n'

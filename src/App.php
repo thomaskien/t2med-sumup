@@ -7,13 +7,15 @@ final class App {
     private SumUpClient $sumup;
     private FhirClient $fhir;
     private ReceiptMailer $mailer;
-    public function __construct(public readonly Config $config, ?HttpClient $http = null, ?ReceiptMailer $mailer = null) {
+    private ReceiptPrinter $printer;
+    public function __construct(public readonly Config $config, ?HttpClient $http = null, ?ReceiptMailer $mailer = null, ?ReceiptPrinter $printer = null) {
         umask(0077);
         $this->db = new Database($config->get('app', 'state_dir'));
         $http ??= new HttpClient();
         $this->sumup = new SumUpClient($config, $http);
         $this->fhir = new FhirClient($config, $http);
         $this->mailer = $mailer ?? new ReceiptMailer($config);
+        $this->printer = $printer ?? new ReceiptPrinter($config);
     }
     public static function id(): string { return bin2hex(random_bytes(16)); }
     public static function string(array $input, string $key, int $max = 200, bool $required = true): string {
@@ -116,6 +118,7 @@ final class App {
             'mock' => $this->config->get('sumup', 'mode') === 'mock',
             'fhir_mock' => $this->config->get('fhir', 'mode') === 'mock',
             'mail_enabled' => $this->config->get('mail', 'enabled', false),
+            'printing_enabled' => $this->config->get('printing', 'enabled', false),
             'mock_document_fail' => (bool)$visit['mock_document_fail'],
             'max_amount_cents' => $this->config->get('app', 'max_amount_cents')];
     }
@@ -202,6 +205,39 @@ final class App {
             ? 'Im Testmodus werden Beleg und E-Mail-Versand nur simuliert.' : 'SumUp liefert für diese Zahlung keinen Originalbeleg-Link.') : '';
         $recipient = $this->receiptRecipient($visit, $id);
         return ['url' => $url, 'email' => $recipient['email'], 'message' => $recipient['message'] ?: $message];
+    }
+    public function receiptPrint(array $visit, array $input): array {
+        if (!$this->config->get('printing', 'enabled', false)) throw new Problem('Direktdruck ist deaktiviert.', 409);
+        $id = self::string($input, 'payment_id', 32);
+        $request = self::string($input, 'request_id', 64);
+        if (!preg_match('/^[A-Za-z0-9-]{16,64}$/D', $request)) throw new Problem('Ungültiger Druckschlüssel.');
+        // Druckaufträge auf diesem Server nacheinander übergeben.
+        return $this->db->locked('receipt-print', function () use ($visit, $id, $request): array {
+            $payment = $this->payment($visit, $id);
+            if ($payment['payment_status'] !== 'successful') throw new Problem('Drucken erst nach erfolgreicher Zahlung möglich.', 409);
+            $old = $this->db->one('SELECT * FROM receipt_prints WHERE request_id=?', [$request]);
+            if ($old && $old['payment_id'] !== $id) throw new Problem('Druckschlüssel gehört zu einer anderen Zahlung.', 409);
+            if ($old) return $this->printResult($old['status']);
+            $data = $this->printer->prepare($this->sumup->receiptSource($payment));
+            $this->db->query("INSERT INTO receipt_prints(request_id,payment_id,status,created_at) VALUES(?,?,'submitting',?)", [$request, $id, time()]);
+            $status = 'simulated';
+            if ($this->config->get('sumup', 'mode') === 'live') {
+                try { $this->printer->send($data); $status = 'submitted'; }
+                catch (Problem $e) {
+                    $this->db->query("UPDATE receipt_prints SET status='unknown' WHERE request_id=?", [$request]);
+                    return ['status' => 'unknown', 'message' => $e->getMessage()];
+                }
+            }
+            $this->db->query('UPDATE receipt_prints SET status=? WHERE request_id=?', [$status, $request]);
+            return $this->printResult($status);
+        });
+    }
+    private function printResult(string $status): array {
+        return ['status' => $status, 'message' => match ($status) {
+            'submitted' => 'Druckauftrag an die Druckerfreigabe übergeben.',
+            'simulated' => 'Testdruck erfolgreich simuliert. Es wurde nichts an den Drucker gesendet.',
+            default => 'Druckübergabe nicht bestätigt. Drucker und Warteschlange prüfen, bevor erneut gedruckt wird.',
+        }];
     }
     public function receiptRecipient(array $visit, string $id): array {
         $payment = $this->payment($visit, $id);

@@ -4,6 +4,7 @@ const euro = cents => new Intl.NumberFormat('de-DE', {style:'currency', currency
 let state = null, visitId = new URL(location.href).searchParams.get('v'), csrf = '', timer = null, busy = false;
 let selected = new Set(), retrySelection = false, startRequest = null;
 let receiptShare = null, receiptRecipient = null, receiptMailRequest = null;
+let receiptPrintPayment = null;
 function message(text='') { $('message').textContent = text; $('message').hidden = !text; }
 async function api(action, data={}) {
   const controller = new AbortController(); const timeout = setTimeout(() => controller.abort(), 75000);
@@ -57,7 +58,8 @@ function renderPayment() {
   const p = state.payment; const showing = p && !retrySelection;
   $('selection').hidden=!!showing; $('payment').hidden=!showing;
   if (showing) manage(false);
-  for (const id of ['document','receipt','receipt-mail','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
+  for (const id of ['document','receipt','receipt-mail','receipt-print','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
+  if(!showing || receiptPrintPayment!==p.id) { $('receipt-print-status').hidden=true; $('receipt-print').textContent='Beleg drucken'; }
   if(!showing || p.payment_status!=='successful' || receiptShare?.paymentId!==p.id) { $('receipt-share-panel').hidden=true; receiptShare=null; }
   if(!showing || p.payment_status!=='successful' || receiptRecipient?.paymentId!==p.id) {
     receiptRecipient=null; receiptMailRequest=null; $('receipt-email').value=''; mailStatus('');
@@ -66,6 +68,7 @@ function renderPayment() {
   if (!showing) return;
   $('receipt').hidden=p.payment_status!=='successful';
   $('receipt-share').hidden=p.payment_status!=='successful';
+  $('receipt-print').hidden=p.payment_status!=='successful' || !state.printing_enabled;
   if(p.payment_status==='successful') renderReceiptMail();
   $('payment-amount').textContent=euro(p.amount_cents); $('payment-reference').textContent=p.reference;
   $('payment-error').textContent=p.error_message; $('payment-error').hidden=!p.error_message;
@@ -125,6 +128,24 @@ $('receipt').onclick=()=>{
   window.open('/receipt.php?'+query, '_blank', 'noopener,noreferrer');
 };
 function mailStatus(text) { $('receipt-mail-status').textContent=text; $('receipt-mail-status').hidden=!text; }
+function printStatus(text) { $('receipt-print-status').textContent=text; $('receipt-print-status').hidden=!text; }
+$('receipt-print').onclick=()=>run(async()=>{
+  if(!state.printing_enabled || state.payment?.payment_status!=='successful') return;
+  const key='ks-print-'+visitId+'-'+state.payment.id;
+  // Auch nach Neuladen wird bei verlorener Antwort derselbe Auftrag geprüft.
+  let requestId=sessionStorage.getItem(key);
+  if(!requestId) { requestId=crypto.randomUUID(); sessionStorage.setItem(key,requestId); }
+  receiptPrintPayment=state.payment.id;
+  printStatus('Beleg wird für den Druck aufbereitet …');
+  try {
+    const result=await api('receipt_print',{payment_id:state.payment.id,request_id:requestId});
+    printStatus(result.message); sessionStorage.removeItem(key);
+    $('receipt-print').textContent=['submitted','simulated'].includes(result.status) ? 'Beleg erneut drucken' : 'Druck erneut versuchen';
+  } catch(error) {
+    printStatus('Druckübergabe nicht bestätigt. Ein weiterer Klick prüft denselben Druckauftrag.');
+    $('receipt-print').textContent='Druckauftrag prüfen / erneut versuchen'; throw error;
+  }
+});
 function renderReceiptMail() {
   const button=$('receipt-mail'); button.hidden=false;
   if(!state.mail_enabled) { button.textContent='Beleg mailen – E-Mail-Versand nicht eingerichtet'; button.disabled=true; return; }

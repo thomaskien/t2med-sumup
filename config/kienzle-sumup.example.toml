@@ -42,3 +42,10 @@ username = ""
 password = ""
 from_address = ""
 from_name = ""
+
+# Optionaler RAW-Direktdruck auf Epson TM-m10 (58 mm), Samba-Gastzugriff.
+[printing]
+enabled = false
+share = "//kienzlebox/TMm10"
+width_dots = 420
+cut = true

@@ -13,11 +13,11 @@ final class Database {
     }
     public function migrate(): void {
         $version = (int)$this->pdo->query('PRAGMA user_version')->fetchColumn();
-        if ($version > 2) throw new \RuntimeException('Datenbank ist neuer als die Anwendung.');
-        if ($version === 2) return;
+        if ($version > 3) throw new \RuntimeException('Datenbank ist neuer als die Anwendung.');
+        if ($version === 3) return;
         $this->transaction(function (): void {
             $this->pdo->exec((string)file_get_contents(__DIR__ . '/schema.sql'));
-            $this->pdo->exec('PRAGMA user_version=2');
+            $this->pdo->exec('PRAGMA user_version=3');
         });
     }
     public function query(string $sql, array $params = []): \PDOStatement {

@@ -1,7 +1,27 @@
-# Prüfung von Version 1.1
+# Prüfungen
 
-Stand: 15. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
+Stand: 17. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
 vom 13. September sind unten gesondert aufgeführt.
+
+Ergänzung für den optionalen Direktdruck: PHP-Kernprüfungen und
+`tests/print-format.php` bestanden. Geprüft sind Migration bestehender Daten,
+Zahlungszuordnung, Druck erst nach erfolgreicher Zahlung, wiederholte Auftragskennung,
+verlorene Übergabeantwort und bewusster Nachdruck. Zahlung und Aktendokumentation
+bleiben dabei unverändert. Die Rasterprüfung kontrolliert proportionale Skalierung
+auf 420 Punkte, Epson-Grafikstreifen, Pixelreihenfolge, weiße Füllbits und genau einen
+abschließenden Schnitt beziehungsweise Vorschub bei deaktiviertem Schnitt.
+
+Die Konfigurationsabfrage wurde in temporären Verzeichnissen mit echter TOML-Prüfung
+ausgeführt: neue Installation standardmäßig ohne Druck, UNC-Freigabe, Aktivieren,
+Deaktivieren, Wiederaktivieren mit vorhandenen Werten und ungültige Eingaben.
+Im separaten Chrome-Testbrowser geprüft: Button nur nach Zahlungserfolg und bei
+aktivierter Funktion, manueller Druck, Doppelklickschutz, Nachdruck, verlorene
+HTTP-Antwort mit Neuladen und Wiederholung desselben Auftrags sowie Deaktivierung.
+Desktop- und Mobilansicht wurden visuell kontrolliert. Dabei liefen nur simulierte
+Druckaufträge; die Druckerfreigabe wurde nicht angesprochen. Der erste echte Ausdruck
+vom Linux-Anwendungsserver auf den TM-m10 muss noch auf Lesbarkeit und Schnitt geprüft
+werden. Laut Anwender funktioniert die vorhandene Samba-Freigabe vom Mac inklusive
+Schnitt bereits.
 
 Ergänzung für Version 1.1: PHP-Kernprüfungen und Syntaxprüfungen bestanden. Die neue
 Adressabfrage prüft die Zahlungs-/Patientenzuordnung und ruft SumUp nicht auf.

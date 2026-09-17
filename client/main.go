@@ -35,7 +35,7 @@ func main() {
 	version := flag.Bool("version", false, "Version anzeigen")
 	flag.Parse()
 	if *version {
-		fmt.Println("kienzle-sumup 1.2")
+		fmt.Println("kienzle-sumup 1.3")
 		return
 	}
 	if *configPath == "" {

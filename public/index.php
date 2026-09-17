@@ -17,7 +17,14 @@ $version = htmlspecialchars(trim(file_get_contents(dirname(__DIR__) . '/VERSION'
 <section class="card" id="selection"><div class="section-heading"><h2>Leistungen</h2><button type="button" id="manage-toggle" class="text-button" aria-expanded="false">Leistungen verwalten</button></div>
 <div id="services"></div><p id="empty" class="muted" hidden>Noch keine Leistungen angelegt. Über „Leistungen verwalten“ kannst du beginnen.</p>
 <div class="manual"><label for="manual">Sonstiger Betrag <span class="muted">optional</span></label><div class="amount-input"><input id="manual" type="text" inputmode="decimal" placeholder="0,00" autocomplete="off" maxlength="12"><span>€</span></div></div>
-<div class="total"><span>Gesamt</span><strong id="total">0,00 €</strong></div><button id="pay" class="primary wide" disabled>Mit Karte kassieren</button></section>
+<div class="total"><span>Gesamt</span><strong id="total">0,00 €</strong></div>
+<div id="reader-busy" class="reader-busy" hidden>
+<h2 id="reader-title">Terminal belegt</h2><p id="reader-description" role="status"></p>
+<p id="reader-reference" class="reference muted"></p>
+<button id="reader-cancel" class="secondary wide">Anderen Vorgang abbrechen</button>
+<button id="reader-status" class="text-button">Status prüfen</button>
+</div>
+<button id="pay" class="primary wide" disabled>Mit Karte kassieren</button></section>
 <section id="manager" class="card" hidden><div class="section-heading"><h2>Leistungen verwalten</h2><button id="manage-close" class="text-button">Fertig</button></div><div id="manage-list"></div>
 <form id="service-form"><input id="service-id" type="hidden"><label for="service-label">Bezeichnung</label><input id="service-label" required maxlength="160" placeholder="z. B. Attest"><label for="service-price">Preis in Euro</label><input id="service-price" required inputmode="decimal" placeholder="10,00" maxlength="12"><div class="actions"><button class="primary" type="submit" id="service-save">Leistung hinzufügen</button><button id="edit-reset" type="button" class="secondary" hidden>Abbrechen</button></div></form></section>
 <section id="payment" class="card payment-card" hidden aria-live="polite"><span id="status-symbol" class="status-symbol" aria-hidden="true">…</span><h2 id="payment-title"></h2><p id="payment-description"></p><strong id="payment-amount" class="payment-amount"></strong><p id="payment-reference" class="muted reference"></p><p id="payment-error" class="inline-error" hidden></p>

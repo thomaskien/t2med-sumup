@@ -2,7 +2,7 @@
 
 Eine kleine PHP-Webanwendung für Kartenzahlungen am SumUp Solo. Leistungen auswählen,
 Betrag ans Terminal senden und nach erfolgreicher Zahlung bewusst in der Patientenakte
-dokumentieren. **Version 1.2**, von Dr. Thomas Kienzle.
+dokumentieren. **Version 1.3**, von Dr. Thomas Kienzle.
 
 ## Video: Sumup in T2med anbinden
 
@@ -247,7 +247,7 @@ Er enthält `client.json` mit Serveradresse, Starter-Schlüssel und Zertifikat-F
 sowie das öffentliche Serverzertifikat. **Diesen Ordner nicht ins Repository oder unter
 den Webroot legen.** Er ist ausschließlich für berechtigte Praxisarbeitsplätze vorgesehen.
 
-Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.2` und prüfen
+Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.3` und prüfen
 seine SHA-256-Prüfsumme. Python, Go und PHP werden auf dem Arbeitsplatz nicht benötigt.
 Alternativ vorab die Release-Dateien und `SHA256SUMS` in diesen Ordner legen.
 
@@ -395,6 +395,16 @@ an SumUp gesendet. Keine Kartendaten werden lokal gespeichert.
 - Startanfragen mit derselben lokalen ID geben den bestehenden Zahlungsversuch zurück.
   Eine neue ID startet ebenfalls keine zweite Zahlung für denselben offenen Vorgang.
 - Solange ein Terminalvorgang ungeklärt ist, startet die Anwendung dort keine neue Zahlung.
+- Ist das Terminal mit einem anderen Vorgang belegt, zeigt die Leistungsauswahl dessen
+  Betrag und neutrale Referenz. **Anderen Vorgang abbrechen** fordert den Abbruch an;
+  **Status prüfen** gleicht den Stand erneut ab. Die offene Seite prüft auch automatisch.
+  Sobald der alte Vorgang geklärt ist, lässt sich die ausgewählte neue Zahlung starten.
+  Ein veralteter Klick bricht keinen inzwischen neu gestarteten Vorgang ab.
+- Vor jedem Abbruch wird der Zahlungsstatus frisch abgefragt. Eine inzwischen erfolgreiche
+  Zahlung bleibt erhalten und muss im zugehörigen Vorgang dokumentiert werden.
+  SumUp verarbeitet den [Terminalabbruch zeitversetzt](https://developer.sumup.com/api/readers);
+  das Terminal muss online sein und noch auf eine Kartenaktion warten. Bei fehlender
+  Bestätigung kann der Abbruch erneut angefragt werden. Es gibt keinen automatischen Neustart.
 - Ein Timeout ist kein Zahlungsfehlschlag. Die Seite gleicht über die gespeicherte
   SumUp-ID oder die vor dem Start gespeicherte neutrale Referenz ab.
 - Erfolg wird über den Transaktionsstatus mit passendem Händler, Referenz, Betrag und EUR
@@ -473,7 +483,7 @@ bash scripts/build-client.sh
 ```
 
 GitHub Actions prüft diese Abläufe und baut die Starter für Windows, macOS und Linux.
-Ein Tag `v1.2` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
+Ein Tag `v1.3` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
 
 ## Stand der Integration
 

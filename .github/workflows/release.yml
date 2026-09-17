@@ -22,6 +22,7 @@ jobs:
           cache: false
       - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin libphp-phpmailer fonts-dejavu-core
       - run: php tests/critical.php
+      - run: php tests/reader-cancel.php
       - run: php tests/print-format.php
       - run: php tests/mail-mime.php
       - run: python3 tests/tls-pin.py

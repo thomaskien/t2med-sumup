@@ -3,6 +3,21 @@
 Stand: 17. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
 vom 13. September sind unten gesondert aufgeführt.
 
+Version 1.3: `php tests/reader-cancel.php` und die bestehenden PHP-Kernprüfungen
+bestanden. Mit simulierten SumUp-Antworten geprüft: anderer offener Vorgang,
+frischer Statusabgleich vor dem Abbruch, inzwischen erfolgreiche Zahlung,
+verlorene Abbruchantwort mit Wiederholung, verzögerte Checkout-Bestätigung und
+veralteter Klick nach Start einer neuen Zahlung. Fehlende Statusbestätigung gibt
+das Terminal nicht frei. Die Übersicht enthält nur Betrag, neutrale Referenz und
+technischen Status; vollständige fremde Zahlungs- und Patientendaten bleiben gesperrt.
+
+Im separaten Chrome-Testbrowser mit zwei simulierten Vorgängen geprüft: sichtbarer
+Abbruchknopf, CSRF-Ablehnung, Beibehalten des ausgewählten Betrags, automatische
+Statusklärung nach verlorener HTTP-Antwort und Neustart nur durch bewussten Klick.
+Das ursprüngliche Fenster zeigt den bestätigten Abbruch. Desktop- und Mobilansicht
+visuell kontrolliert, keine JavaScript-Fehler. Dabei wurde kein echter Terminalvorgang
+abgebrochen und keine Patientenakte beschrieben.
+
 Ergänzung zur Druckdiagnose: `php tests/critical.php` bestanden. Technische
 Samba-Statuscodes werden sowohl aus stdout als auch stderr übernommen; bei
 fehlendem Statuscode erscheint der Prozess-Exit-Code. Die Prüfung verwendet lokale

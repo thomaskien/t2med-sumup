@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const euro = cents => new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'}).format(cents / 100);
 let state = null, visitId = new URL(location.href).searchParams.get('v'), csrf = '', timer = null, busy = false;
 let selected = new Set(), retrySelection = false, startRequest = null;
+let readerTimer = null, readerChecking = false, readerMessage = '';
 let receiptShare = null, receiptRecipient = null, receiptMailRequest = null;
 let receiptPrintPayment = null;
 function message(text='') { $('message').textContent = text; $('message').hidden = !text; }
@@ -35,7 +36,7 @@ function updateTotal() {
   const sum = state.services.filter(s => selected.has(s.id)).reduce((total,s) => total+s.price_cents, 0) + manualCents();
   $('total').textContent = Number.isFinite(sum) ? euro(sum) : '—';
   $('pay').textContent = sum > 0 ? euro(sum) + ' mit Karte kassieren' : 'Mit Karte kassieren';
-  $('pay').disabled = busy || !(sum > 0 && sum <= state.max_amount_cents);
+  $('pay').disabled = busy || !!state.reader_payment || !(sum > 0 && sum <= state.max_amount_cents);
 }
 function renderServices() {
   $('services').replaceChildren(); $('manage-list').replaceChildren();
@@ -54,9 +55,36 @@ function renderServices() {
 }
 function resetForm() { $('service-form').reset(); $('service-id').value=''; $('service-save').textContent='Leistung hinzufügen'; $('edit-reset').hidden=true; }
 function manage(show) { $('manager').hidden=!show; $('manage-toggle').setAttribute('aria-expanded',String(show)); if(show) $('manager').scrollIntoView({behavior:'smooth',block:'nearest'}); }
+function renderReader() {
+  clearTimeout(readerTimer);
+  const p=state.reader_payment;
+  $('reader-busy').hidden=$('selection').hidden || (!p && !readerMessage);
+  $('reader-title').textContent=p ? (p.payment_status==='cancel_requested' ? 'Abbruch wird geprüft' : 'Terminal belegt') : 'Terminal bereit';
+  $('reader-description').textContent=p
+    ? euro(p.amount_cents)+' · '+(p.error_message || readerMessage || 'Hier läuft noch ein anderer Vorgang. Du kannst ihn am Terminal abbrechen.')
+    : readerMessage;
+  $('reader-reference').textContent=p?.reference || ''; $('reader-reference').hidden=!p;
+  for(const id of ['reader-cancel','reader-status']) { $(id).hidden=!p; $(id).disabled=busy || readerChecking; }
+  $('reader-cancel').textContent=p?.payment_status==='cancel_requested' ? 'Abbruch erneut anfragen' : 'Anderen Vorgang abbrechen';
+  if(p && !$('selection').hidden && !readerChecking) readerTimer=setTimeout(pollReader,3000);
+}
+async function refreshReader(action) {
+  const id=state.reader_payment?.id; if(!id) return;
+  const result=await api(action,{payment_id:id});
+  if(state.reader_payment?.id!==id) return;
+  state.reader_payment=result.reader_payment; readerMessage=result.message;
+}
+async function pollReader() {
+  if(busy || readerChecking) { readerTimer=setTimeout(pollReader,3000); return; }
+  readerChecking=true; renderReader();
+  try { await refreshReader('reader_status'); }
+  catch(e) { readerMessage=e.message; }
+  finally { readerChecking=false; renderReader(); updateTotal(); }
+}
 function renderPayment() {
   const p = state.payment; const showing = p && !retrySelection;
   $('selection').hidden=!!showing; $('payment').hidden=!showing;
+  renderReader();
   if (showing) manage(false);
   for (const id of ['document','receipt','receipt-mail','receipt-print','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
   if(!showing || receiptPrintPayment!==p.id) { $('receipt-print-status').hidden=true; $('receipt-print').textContent='Beleg drucken'; }
@@ -117,11 +145,15 @@ $('pay').onclick=()=>run(async()=>{
   // Schlüssel und Anfrage vor dem Netzaufruf speichern; bei verlorener Antwort wiederverwenden.
   if(!startRequest) startRequest={...data,request_id:crypto.randomUUID()};
   sessionStorage.setItem('ks-start-'+visitId,JSON.stringify(startRequest));
-  state.payment=await api('start',startRequest); retrySelection=false;
+  try { state.payment=await api('start',startRequest); }
+  catch(error) { try { await load(); } catch {} throw error; }
+  retrySelection=false; state.reader_payment=null; readerMessage='';
   sessionStorage.removeItem('ks-start-'+visitId); startRequest=null; renderPayment();
 });
 $('retry').onclick=()=>{ retrySelection=true; startRequest=null; renderPayment(); updateTotal(); };
 $('cancel').onclick=()=>run(async()=>{ state.payment=await api('cancel',{payment_id:state.payment.id}); });
+$('reader-cancel').onclick=()=>run(()=>refreshReader('reader_cancel'));
+$('reader-status').onclick=()=>run(()=>refreshReader('reader_status'));
 $('receipt').onclick=()=>{
   if(busy || state?.payment?.payment_status!=='successful') return;
   const query=new URLSearchParams({v:visitId,p:state.payment.id});

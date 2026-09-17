@@ -115,6 +115,7 @@ final class App {
             'completed' => $visit['completed_at'] !== null,
             'services' => $this->db->query('SELECT id,label,price_cents FROM services WHERE active=1 ORDER BY label COLLATE NOCASE')->fetchAll(),
             'payment' => $payment ? $this->publicPayment($payment) : null,
+            'reader_payment' => $this->readerPayment($visit),
             'mock' => $this->config->get('sumup', 'mode') === 'mock',
             'fhir_mock' => $this->config->get('fhir', 'mode') === 'mock',
             'mail_enabled' => $this->config->get('mail', 'enabled', false),
@@ -160,7 +161,7 @@ final class App {
             $this->editable($fresh);
             $pending = $this->db->one("SELECT * FROM payments WHERE visit_id=? AND payment_status IN ('starting','pending','unknown','cancel_requested','successful')", [$visit['id']]);
             if ($pending) return $this->publicPayment($pending);
-            if ($this->db->one("SELECT id FROM payments WHERE payment_status IN ('starting','pending','unknown','cancel_requested')")) throw new Problem('Das Terminal ist noch mit einem anderen Vorgang belegt.', 409);
+            if ($this->readerPayment($visit)) throw new Problem('Das Terminal ist belegt. Du kannst den anderen Vorgang unten prüfen oder abbrechen.', 409);
             $payment = $this->db->transaction(function () use ($visit, $request, $hash, $ids, $manual): array {
                 $items = []; $amount = 0; $max = $this->config->get('app', 'max_amount_cents');
                 foreach ($ids as $id) {
@@ -289,32 +290,78 @@ final class App {
     public function poll(array $visit, string $id): array {
         return $this->db->locked('payment-' . $id, function () use ($visit, $id): array {
             $payment = $this->payment($visit, $id);
-            if (!in_array($payment['payment_status'], ['successful', 'failed', 'cancelled'], true) && time() - $payment['checked_at'] >= 2) {
-                $this->db->query('UPDATE payments SET checked_at=? WHERE id=?', [time(), $id]);
-                try {
-                    $result = $this->sumup->status($payment);
-                    $status = $result['status'];
-                    $this->db->query('UPDATE payments SET payment_status=?,paid_at=COALESCE(paid_at,?),transaction_id=COALESCE(?,transaction_id),error_message=? WHERE id=?',
-                        [$status, $status === 'successful' ? time() : null, $result['transaction_id'] ?? null, $status === 'unknown' ? 'Zahlungsausgang noch ungeklärt. Bitte am Terminal prüfen; keinen neuen Vorgang starten.' : '', $id]);
-                } catch (TransportError $e) {
-                    $this->db->query('UPDATE payments SET error_message=? WHERE id=?', [$e->getMessage(), $id]);
-                }
-            }
+            try { $this->refreshPayment($payment); } catch (TransportError) {}
             return $this->publicPayment($this->payment($visit, $id));
         });
     }
+    // Aufrufer hält die Zahlungssperre. Vor einem Abbruch immer frisch abgleichen.
+    private function refreshPayment(array $payment, bool $force = false): array {
+        if (in_array($payment['payment_status'], ['successful', 'failed', 'cancelled'], true) || (!$force && time() - $payment['checked_at'] < 2)) return $payment;
+        $id = $payment['id'];
+        $this->db->query('UPDATE payments SET checked_at=? WHERE id=?', [time(), $id]);
+        try {
+            $result = $this->sumup->status($payment);
+            $status = $result['status'];
+            if ($payment['payment_status'] === 'cancel_requested' && $status === 'pending') $status = 'cancel_requested';
+            $error = match ($status) {
+                'unknown' => 'Zahlungsausgang noch ungeklärt. Bitte am Terminal prüfen; keinen neuen Vorgang starten.',
+                'cancel_requested' => 'Abbruch angefragt; Ergebnis wird geprüft.',
+                default => '',
+            };
+            $this->db->query('UPDATE payments SET payment_status=?,paid_at=COALESCE(paid_at,?),transaction_id=COALESCE(?,transaction_id),error_message=? WHERE id=?',
+                [$status, $status === 'successful' ? time() : null, $result['transaction_id'] ?? null, $error, $id]);
+        } catch (TransportError $e) {
+            $this->db->query('UPDATE payments SET error_message=? WHERE id=?', [$e->getMessage(), $id]);
+            throw $e;
+        }
+        return $this->db->one('SELECT * FROM payments WHERE id=?', [$id]);
+    }
+    private function cancelPayment(array $payment): array {
+        try {
+            $payment = $this->refreshPayment($payment, true);
+            if (in_array($payment['payment_status'], ['starting', 'pending', 'unknown', 'cancel_requested'], true)) {
+                $this->sumup->cancel($payment);
+                $mock = $this->config->get('sumup', 'mode') === 'mock';
+                $this->db->query('UPDATE payments SET payment_status=?,error_message=? WHERE id=?',
+                    [$mock ? 'cancelled' : 'cancel_requested', $mock ? '' : 'Abbruch angefragt; Ergebnis wird geprüft.', $payment['id']]);
+            }
+        } catch (TransportError $e) {
+            $this->db->query('UPDATE payments SET error_message=? WHERE id=?', [$e->getMessage(), $payment['id']]);
+        }
+        return $this->db->one('SELECT * FROM payments WHERE id=?', [$payment['id']]);
+    }
     public function cancel(array $visit, string $id): array {
         return $this->db->locked('reader', fn() => $this->db->locked('payment-' . $id, function () use ($visit, $id): array {
-            $payment = $this->payment($visit, $id);
-            if (in_array($payment['payment_status'], ['pending', 'starting', 'unknown', 'cancel_requested'], true)) {
-                try {
-                    $this->sumup->cancel($payment);
-                    $this->db->query('UPDATE payments SET payment_status=?,error_message=? WHERE id=?', [$this->config->get('sumup', 'mode') === 'mock' ? 'cancelled' : 'cancel_requested', 'Abbruch angefragt; Ergebnis wird geprüft.', $id]);
-                } catch (TransportError $e) {
-                    $this->db->query('UPDATE payments SET error_message=? WHERE id=?', [$e->getMessage(), $id]);
-                }
+            return $this->publicPayment($this->cancelPayment($this->payment($visit, $id)));
+        }));
+    }
+    private function readerPayment(array $visit): ?array {
+        // Nur neutrale Zahlungsdaten des blockierenden Vorgangs, keine Patientendaten.
+        return $this->db->one("SELECT id,amount_cents,reference,payment_status,error_message FROM payments WHERE reader_id=? AND visit_id<>? AND payment_status IN ('starting','pending','unknown','cancel_requested')",
+            [$this->config->get('sumup', 'reader_id') ?: 'mock-reader', $visit['id']]);
+    }
+    public function readerAction(array $visit, string $id, bool $cancel = false): array {
+        return $this->db->locked('reader', fn() => $this->db->locked('payment-' . $id, function () use ($visit, $id, $cancel): array {
+            $this->editable($this->db->one('SELECT * FROM visits WHERE id=?', [$visit['id']]));
+            $payment = $this->db->one('SELECT * FROM payments WHERE id=? AND visit_id<>? AND reader_id=?',
+                [$id, $visit['id'], $this->config->get('sumup', 'reader_id') ?: 'mock-reader']);
+            if (!$payment) throw new Problem('Dieser Terminalvorgang ist nicht verfügbar.', 404);
+            // Niemals einen neueren Vorgang abbrechen, wenn die angezeigte ID veraltet ist.
+            if ($cancel) $payment = $this->cancelPayment($payment);
+            else {
+                try { $payment = $this->refreshPayment($payment); }
+                catch (TransportError) { $payment = $this->db->one('SELECT * FROM payments WHERE id=?', [$id]); }
             }
-            return $this->publicPayment($this->payment($visit, $id));
+            $current = $this->readerPayment($visit);
+            $message = match ($payment['payment_status']) {
+                'successful' => 'Die andere Zahlung war bereits erfolgreich. Bitte im zugehörigen Vorgang in der Akte dokumentieren.',
+                'cancelled' => 'Der andere Vorgang wurde abgebrochen.',
+                'failed' => 'Die andere Zahlung ist nicht erfolgt.',
+                default => $payment['error_message'] ?: 'Am Terminal läuft noch der andere Vorgang.',
+            };
+            if (!$current) $message .= ' Du kannst jetzt die neue Zahlung starten.';
+            elseif ($current['id'] !== $id) $message .= ' Inzwischen ist ein weiterer Vorgang am Terminal aktiv.';
+            return ['reader_payment' => $current, 'message' => $message];
         }));
     }
     public function document(array $visit, string $id): array {

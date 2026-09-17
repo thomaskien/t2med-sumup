@@ -2,3 +2,4 @@
 .receipt-share{text-align:left;margin-top:16px;padding-top:16px;border-top:1px solid var(--line)}.receipt-share label{display:block;margin:12px 0 6px}.receipt-share .actions{justify-content:flex-start}.receipt-share a{color:var(--teal);font-size:14px}.receipt-share input[readonly]{font-size:12px}.receipt-share .muted{font-size:13px}
 #receipt-mail{margin-top:12px;overflow-wrap:anywhere}#receipt-mail-status{font-size:13px;overflow-wrap:anywhere}
 #receipt-print{margin-top:12px}#receipt-print-status{font-size:13px}
+.reader-busy{margin-bottom:20px;padding:18px;border:1px solid #e6d6ab;border-radius:12px;background:#fffaf0}.reader-busy p{font-size:14px;line-height:1.5}.reader-busy .reference{font-size:11px}.reader-busy .secondary{background:#f2e5c6;color:#644b13}

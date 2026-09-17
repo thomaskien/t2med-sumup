@@ -24,10 +24,17 @@ Im separaten Chrome-Testbrowser geprüft: Button nur nach Zahlungserfolg und bei
 aktivierter Funktion, manueller Druck, Doppelklickschutz, Nachdruck, verlorene
 HTTP-Antwort mit Neuladen und Wiederholung desselben Auftrags sowie Deaktivierung.
 Desktop- und Mobilansicht wurden visuell kontrolliert. Dabei liefen nur simulierte
-Druckaufträge; die Druckerfreigabe wurde nicht angesprochen. Der erste echte Ausdruck
-vom Linux-Anwendungsserver auf den TM-m10 muss noch auf Lesbarkeit und Schnitt geprüft
-werden. Laut Anwender funktioniert die vorhandene Samba-Freigabe vom Mac inklusive
-Schnitt bereits.
+Druckaufträge; die Druckerfreigabe wurde dabei nicht angesprochen.
+
+Praxisbestätigung für Version 1.2 am 17. September 2026: Der Anwender hat den
+funktionierenden Direktdruck nach Korrektur der Samba-Konfiguration bestätigt.
+`guest ok = yes` beseitigte die Zugriffsverweigerung an der Freigabe; anschließend
+behob `disable spoolss = no` mit Samba-Neustart den Fehler
+`Could not connect to spoolss pipe: NT_STATUS_OBJECT_NAME_NOT_FOUND` beim Anlegen
+des Druckauftrags. Die CUPS-RAW-Warteschlange TMm10 verwendet
+`serial:/dev/rfcomm0?baud=115200+parity=none+flow=none`. Der Druck vom Mac inklusive
+Schnitt war laut Anwender bereits zuvor erfolgreich. Diese Geräteprüfung stammt
+vom Anwender, nicht aus den automatisierten Tests.
 
 Ergänzung für Version 1.1: PHP-Kernprüfungen und Syntaxprüfungen bestanden. Die neue
 Adressabfrage prüft die Zahlungs-/Patientenzuordnung und ruft SumUp nicht auf.

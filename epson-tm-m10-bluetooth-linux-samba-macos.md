@@ -346,6 +346,10 @@ lp -d TMm10 -o raw /tmp/tmtest.raw
 
 ## 9. Samba-Freigabe konfigurieren
 
+Alle Befehle in diesem Abschnitt auf dem **Druckserver (kienzlebox)** ausführen.
+Der Anwendungsserver (t2medtest) benötigt dafür weder CUPS noch ein eigenes
+`/var/spool/samba`.
+
 Spool-Verzeichnis anlegen:
 
 ```bash
@@ -353,14 +357,18 @@ sudo mkdir -p /var/spool/samba
 sudo chmod 1777 /var/spool/samba
 ```
 
-In `/etc/samba/smb.conf` im vorhandenen `[global]`-Abschnitt ergänzen:
+In `/etc/samba/smb.conf` im vorhandenen `[global]`-Abschnitt ergänzen oder vorhandene
+Werte korrigieren. Andere Einstellungen und Freigaben beibehalten:
 
 ```ini
 printing = cups
 printcap name = cups
+map to guest = Bad User
+disable spoolss = no
 ```
 
-Anschließend eine Druckerfreigabe hinzufügen:
+Anschließend die Druckerfreigabe hinzufügen oder den vorhandenen `[TMm10]`-Abschnitt
+entsprechend ergänzen. Keine doppelten Abschnitte anlegen:
 
 ```ini
 [TMm10]
@@ -369,21 +377,28 @@ Anschließend eine Druckerfreigabe hinzufügen:
     printable = yes
     browseable = yes
     read only = yes
+    guest ok = yes
     printer name = TMm10
     cups options = raw
 ```
 
-Konfiguration prüfen:
+Konfiguration prüfen und bei erfolgreicher Prüfung Samba neu starten:
 
 ```bash
-testparm
+sudo testparm -s && sudo systemctl restart smbd
 ```
 
-Samba neu starten:
+**Für kienzle-sumup muss `disable spoolss = no` gesetzt sein.** Bei deaktiviertem
+`spoolss` kann die Anmeldung an der Freigabe funktionieren, während der Druckauftrag
+mit `NT_STATUS_OBJECT_NAME_NOT_FOUND opening remote file stdin-…` scheitert.
+Das Samba-Log meldet dazu `Could not connect to spoolss pipe`. Umstellen auf `no`
+und Neustarten von Samba hat diesen Fehler in der Praxis behoben.
+`guest ok = yes` erlaubt den gewünschten Zugriff ohne Passwort.
+[Samba: spoolss](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#DISABLESPOOLSS)
 
-```bash
-sudo systemctl restart smbd
-```
+Die Einstellungen für den optionalen Direktdruck im Installer und in
+`/etc/kienzle-sumup/kienzle-sumup.toml` auf dem Anwendungsserver stehen in der
+[README](README.md#optionaler-direktdruck-auf-den-epson-tm-m10).
 
 ## 10. Einrichtung unter macOS
 

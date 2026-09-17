@@ -2,7 +2,7 @@
 
 Eine kleine PHP-Webanwendung für Kartenzahlungen am SumUp Solo. Leistungen auswählen,
 Betrag ans Terminal senden und nach erfolgreicher Zahlung bewusst in der Patientenakte
-dokumentieren. **Version 1.1**, von Dr. Thomas Kienzle.
+dokumentieren. **Version 1.2**, von Dr. Thomas Kienzle.
 
 ## Video: Sumup in T2med anbinden
 
@@ -24,7 +24,8 @@ dokumentieren. **Version 1.1**, von Dr. Thomas Kienzle.
    als PDF geöffnet und kann gedruckt oder gespeichert werden.
 5. Optional **Beleg mailen an „emailadresse“** direkt unter dem PDF-Button anklicken.
    Ein Klick versendet den PDF-Anhang an die angezeigte Adresse.
-6. **Dokumentation in der Akte** schreibt einen Freitext-Eintrag und schließt den Vorgang ab.
+6. Optional **Beleg drucken** anklicken, wenn der Direktdruck auf den TM-m10 aktiviert ist.
+7. **Dokumentation in der Akte** schreibt einen Freitext-Eintrag und schließt den Vorgang ab.
    Das Fenster wird anschließend nach Möglichkeit geschlossen; andernfalls bleibt die
    Abschlussmeldung sichtbar und das Fenster kann manuell geschlossen werden.
 
@@ -110,11 +111,53 @@ von kienzle-sumup nicht verändert. Kein zusätzliches AutoCut-Backend verwenden
 Der Mac-Treiber beziehungsweise unser Direktdruck erzeugt den Schnitt bereits im
 jeweiligen Druckauftrag. Beim ersten Ausdruck Lesbarkeit, Länge und Schnitt prüfen.
 
-Für den passwortlosen Zugriff sind ergänzend zur Anleitung in der Samba-Konfiguration
-der kienzlebox `map to guest = Bad User` im bestehenden Abschnitt `[global]` und
-`guest ok = yes` im Abschnitt `[TMm10]` erforderlich, sofern noch nicht eingerichtet.
-Die Anwendung meldet sich als `guest` ohne Passwort an.
-[Samba: Gastzugriff](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPTOGUEST)
+**Auf dem Druckserver (kienzlebox):** In `/etc/samba/smb.conf` die folgenden Werte
+in den vorhandenen Abschnitten ergänzen oder korrigieren. Andere Freigaben erhalten;
+keinen zweiten `[global]`- oder `[TMm10]`-Abschnitt anlegen.
+
+```ini
+[global]
+    printing = cups
+    printcap name = cups
+    map to guest = Bad User
+    disable spoolss = no
+
+[TMm10]
+    comment = Epson TM-m10 Bluetooth
+    path = /var/spool/samba
+    printable = yes
+    browseable = yes
+    read only = yes
+    guest ok = yes
+    printer name = TMm10
+    cups options = raw
+```
+
+Die Anwendung meldet sich als `guest` ohne Passwort an. **`disable spoolss = no`
+ist für diesen Druckweg erforderlich.** Bei `yes` kann der Zugriff auf die Freigabe
+bereits funktionieren, während das Anlegen des Druckauftrags mit
+`NT_STATUS_OBJECT_NAME_NOT_FOUND` scheitert. Im Samba-Log steht dann
+`Could not connect to spoolss pipe`. Dieser Fehler wurde an der kienzlebox durch
+Umstellen auf `no` behoben; der Anwender hat den funktionierenden Direktdruck bestätigt.
+[Samba: Gastzugriff](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPTOGUEST),
+[Samba: spoolss](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#DISABLESPOOLSS)
+
+Spool-Verzeichnis auf der **kienzlebox** vorbereiten:
+
+```bash
+sudo mkdir -p /var/spool/samba
+sudo chmod 1777 /var/spool/samba
+```
+
+Nach Speichern der Samba-Konfiguration auf der **kienzlebox** prüfen und Samba neu starten:
+
+```bash
+sudo testparm -s && sudo systemctl restart smbd
+```
+
+Die oben gezeigte `[printing]`-TOML gehört dagegen auf den **Anwendungsserver
+(t2medtest)**. Dessen Installer richtet den Samba-Client ein; die Freigabe auf der
+kienzlebox wird dort wie beschrieben separat konfiguriert.
 
 Bei fehlgeschlagener Druckübergabe zeigt die Anwendung den Samba-Statuscode bzw.
 Exit-Code an und protokolliert ihn in `/var/log/kienzle-sumup/php.log`.
@@ -204,7 +247,7 @@ Er enthält `client.json` mit Serveradresse, Starter-Schlüssel und Zertifikat-F
 sowie das öffentliche Serverzertifikat. **Diesen Ordner nicht ins Repository oder unter
 den Webroot legen.** Er ist ausschließlich für berechtigte Praxisarbeitsplätze vorgesehen.
 
-Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.1` und prüfen
+Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.2` und prüfen
 seine SHA-256-Prüfsumme. Python, Go und PHP werden auf dem Arbeitsplatz nicht benötigt.
 Alternativ vorab die Release-Dateien und `SHA256SUMS` in diesen Ordner legen.
 
@@ -430,7 +473,7 @@ bash scripts/build-client.sh
 ```
 
 GitHub Actions prüft diese Abläufe und baut die Starter für Windows, macOS und Linux.
-Ein Tag `v1.1` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
+Ein Tag `v1.2` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
 
 ## Stand der Integration
 

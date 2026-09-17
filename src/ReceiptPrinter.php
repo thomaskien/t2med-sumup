@@ -46,13 +46,23 @@ class ReceiptPrinter {
     }
     public function send(string $data): void {
         if (!$this->config->get('printing', 'enabled', false)) throw new Problem('Direktdruck ist deaktiviert.', 409);
-        if (!is_executable('/usr/bin/smbclient')) throw new Problem('Samba-Druckclient fehlt. Bitte den Server-Installer mit aktiviertem Direktdruck ausführen.', 503);
         try {
-            $result = Command::run(['/usr/bin/smbclient', $this->config->get('printing', 'share'), '-N', '-U', 'guest',
-                '--option=client min protocol=SMB2', '--timeout=15', '-c', 'print -'], $data, 20, 65536);
-            if ($result['code'] !== 0) throw new Problem('Samba hat die Druckübergabe nicht bestätigt.', 502);
-        } catch (Problem) {
-            throw new Problem('Druckübergabe nicht bestätigt. Freigabe, Gastzugriff und Warteschlange auf dem Druckserver prüfen, bevor erneut gedruckt wird.', 502);
+            $result = $this->transfer($data);
+            if ($result['code'] !== 0) {
+                // Nur technische Statuscodes übernehmen, keine Rohantworten oder Belegdaten.
+                preg_match_all('/\bNT_STATUS_[A-Z0-9_]{1,64}\b/', $result['output'] . "\n" . $result['stderr'], $matches);
+                $codes = array_slice(array_unique($matches[0]), 0, 3);
+                $reason = $codes ? implode(', ', $codes) : 'Exit-Code ' . (int)$result['code'];
+                throw new Problem('Samba: ' . $reason . '.', 502);
+            }
+        } catch (Problem $e) {
+            error_log('kienzle-sumup: Druckübergabe: ' . $e->getMessage());
+            throw new Problem('Druckübergabe nicht bestätigt. ' . $e->getMessage() . ' Drucker und Warteschlange vor einem neuen Druckversuch prüfen.', $e->http);
         }
+    }
+    protected function transfer(string $data): array {
+        if (!is_executable('/usr/bin/smbclient')) throw new Problem('Samba-Druckclient fehlt. Bitte den Server-Installer mit aktiviertem Direktdruck ausführen.', 503);
+        return Command::run(['/usr/bin/smbclient', $this->config->get('printing', 'share'), '-N', '-U', 'guest',
+            '--option=client min protocol=SMB2', '--timeout=15', '-c', 'print -'], $data, 20, 65536);
     }
 }

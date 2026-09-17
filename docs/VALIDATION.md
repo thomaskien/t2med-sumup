@@ -3,6 +3,12 @@
 Stand: 17. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
 vom 13. September sind unten gesondert aufgeführt.
 
+Ergänzung zur Druckdiagnose: `php tests/critical.php` bestanden. Technische
+Samba-Statuscodes werden sowohl aus stdout als auch stderr übernommen; bei
+fehlendem Statuscode erscheint der Prozess-Exit-Code. Die Prüfung verwendet lokale
+Testprozesse ohne Netzwerk. Rohantworten gelangen weder in die Oberfläche noch ins
+Anwendungslog, und ein erfolgreicher Aufruf bleibt trotz stderr-Hinweis erfolgreich.
+
 Ergänzung für den optionalen Direktdruck: PHP-Kernprüfungen und
 `tests/print-format.php` bestanden. Geprüft sind Migration bestehender Daten,
 Zahlungszuordnung, Druck erst nach erfolgreicher Zahlung, wiederholte Auftragskennung,

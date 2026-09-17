@@ -116,6 +116,18 @@ der kienzlebox `map to guest = Bad User` im bestehenden Abschnitt `[global]` und
 Die Anwendung meldet sich als `guest` ohne Passwort an.
 [Samba: Gastzugriff](https://www.samba.org/samba/docs/current/man-html/smb.conf.5.html#MAPTOGUEST)
 
+Bei fehlgeschlagener Druckübergabe zeigt die Anwendung den Samba-Statuscode bzw.
+Exit-Code an und protokolliert ihn in `/var/log/kienzle-sumup/php.log`.
+Ein erfolgreicher Verbindungstest mit `smbclient ... -c 'quit'` bestätigt nur den
+Zugriff auf die Freigabe. Spool-Verzeichnis und CUPS-Warteschlange werden auf dem
+**Druckserver (kienzlebox)** geprüft, nicht auf dem Anwendungsserver (t2medtest):
+
+```bash
+sudo testparm -s --section-name=TMm10
+ls -ld /var/spool/samba
+lpstat -p TMm10 -v TMm10
+```
+
 Kein Hintergrundjob und kein Webhook. Bei geschlossenem Browser findet keine weitere
 Statusabfrage oder automatische Dokumentation statt. Erneut aus demselben t2med-Kontext
 öffnen setzt einen unvollständigen Vorgang fort. Ein neuer Behandlungskontext kann eine

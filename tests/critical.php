@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 require dirname(__DIR__) . '/src/bootstrap.php';
-use KienzleSumup\{App,Config,HttpClient,Money,Problem,TransportError,ReceiptMailer,ReceiptPrinter};
+use KienzleSumup\{App,Config,Command,HttpClient,Money,Problem,TransportError,ReceiptMailer,ReceiptPrinter};
 
 function check(bool $condition, string $message): void { if (!$condition) throw new RuntimeException($message); }
 function rejects(callable $fn, string $message): void { try { $fn(); } catch (Problem) { return; } throw new RuntimeException($message); }
@@ -209,6 +209,24 @@ try {
     rejects(fn()=>$app->receiptPrint($v,$printInput),'Direktdruck trotz deaktivierter Funktion');
     $values=$cfg->values;$values['printing']=['enabled'=>true,'share'=>'//kienzlebox/TMm10','width_dots'=>420,'cut'=>true];
     $printConfig=new Config($values);$printer=new FakePrinter($printConfig);$printApp=new App($printConfig,$http,null,$printer);
+    $diagnostic = new class($printConfig) extends ReceiptPrinter {
+        public array $result;
+        protected function transfer(string $data): array { return $this->result; }
+    };
+    $oldLog = ini_get('error_log'); $printLog = $cfg->get('app','state_dir') . '/print-test.log';
+    ini_set('error_log', $printLog);
+    try {
+        foreach (['STDOUT','STDERR'] as $stream) {
+            $diagnostic->result=Command::run([PHP_BINARY,'-r','fwrite('.$stream.',"NT_STATUS_OBJECT_NAME_NOT_FOUND opening remote file PRIVATE-TEST-DATA");exit(1);'],'');
+            $failure=rejectedProblem(fn()=>$diagnostic->send('test'),'Fehlgeschlagener Samba-Aufruf akzeptiert');
+            check(str_contains($failure->getMessage(),'NT_STATUS_OBJECT_NAME_NOT_FOUND'),'Samba-Statuscode fehlt');
+            check(!str_contains($failure->getMessage(),'PRIVATE-TEST-DATA'),'Samba-Rohantwort in Oberfläche');
+        }
+        $diagnostic->result=['code'=>1,'output'=>'','stderr'=>'PRIVATE-TEST-DATA'];
+        check(str_contains(rejectedProblem(fn()=>$diagnostic->send('test'),'Samba-Fehler ohne Statuscode akzeptiert')->getMessage(),'Exit-Code 1'),'Exit-Code fehlt');
+        $diagnostic->result=['code'=>0,'output'=>'','stderr'=>'Hinweis'];$diagnostic->send('test');
+        check(!str_contains((string)file_get_contents($printLog),'PRIVATE-TEST-DATA'),'Samba-Rohantwort im Log');
+    } finally { ini_set('error_log',$oldLog); }
     check($printApp->receiptPrint($v,$printInput)['status']==='submitted','Druckauftrag nicht übergeben');
     $printApp->receiptPrint($v,$printInput);check($printer->sent===1,'Gleicher Druckauftrag doppelt gesendet');
     $printer->lost=true;$printInput['request_id']=App::id();

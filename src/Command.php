@@ -21,8 +21,9 @@ final class Command {
                 if (!$state['running']) break;
                 usleep(50000);
             } while (true);
-            rewind($out);
-            return ['code' => $state['exitcode'], 'output' => stream_get_contents($out, $maxOutput + 1)];
+            rewind($out); rewind($err);
+            return ['code' => $state['exitcode'], 'output' => stream_get_contents($out, $maxOutput + 1),
+                'stderr' => stream_get_contents($err, 65537)];
         } finally {
             if (is_resource($process)) { if (proc_get_status($process)['running']) proc_terminate($process, 9); proc_close($process); }
             foreach ([$in, $out, $err] as $file) if (is_resource($file)) fclose($file);

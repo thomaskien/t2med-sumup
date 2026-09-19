@@ -12,7 +12,9 @@ function visit(App $app, string $context): array {
 }
 final class InvoiceHttp extends HttpClient {
     public array $calls=[], $body=[];
-    public bool $missingId=false;
+    public bool $missingId=false, $allowReceipt=false, $receiptUnavailable=false;
+    public int $downloads=0;
+    public string $original='<svg xmlns="http://www.w3.org/2000/svg" width="420" height="310"><rect width="420" height="310" fill="white"/><g font-family="sans-serif" fill="black"><text x="20" y="40" font-size="26">TEST: SumUp-Originalbeleg</text><text x="20" y="95" font-size="30">14,49 EUR</text><text x="20" y="140" font-size="22">Kartenzahlung erfolgreich</text><text x="20" y="190" font-size="22">TEST-Karte **** 1234</text><path d="M20 240 H400" stroke="black"/></g></svg>';
     public string $timestamp='2026-09-19T09:30:00Z';
     public function request(string $method,string $url,array $headers,?array $body=null,string $caFile='',bool $pinCertificate=false):array {
         $this->calls[]=[$method,$url,$body];
@@ -24,10 +26,15 @@ final class InvoiceHttp extends HttpClient {
             return ['status'=>201,'body'=>['data'=>['checkout_id'=>'checkout-1','client_transaction_id'=>'client-1']]];
         }
         if (str_contains($url,'/transactions?')) return ['status'=>200,'body'=>['id'=>$this->missingId ? '' : 'c31a51a8-02c8-42a9-a831-7df089a04b36','status'=>'SUCCESSFUL','client_transaction_id'=>'client-1',
-            'merchant_code'=>'MTEST','currency'=>'EUR','amount'=>$this->body['total_amount']['value']/100,'timestamp'=>$this->timestamp]];
+            'merchant_code'=>'MTEST','currency'=>'EUR','amount'=>$this->body['total_amount']['value']/100,'timestamp'=>$this->timestamp,
+            'links'=>[['rel'=>'receipt','href'=>'https://receipts.sumup.com/test-original']]]];
         throw new RuntimeException('Unerwarteter API-Pfad');
     }
-    public function download(string $url):array { throw new RuntimeException('Lokaler Beleg lädt einen SumUp-Beleg herunter'); }
+    public function download(string $url):array {
+        check($this->allowReceipt && $url==='https://receipts.sumup.com/test-original','Unerwarteter Originalbeleg-Abruf');
+        $this->downloads++;
+        return ['status'=>$this->receiptUnavailable ? 503 : 200,'body'=>$this->original];
+    }
 }
 final class InvoicePrinter extends ReceiptPrinter {
     public int $sent=0;
@@ -97,6 +104,22 @@ try {
     rejects(fn()=>$app->receipt($v2,$p['id']),'Fremde Rechnung zugänglich');
     $print=['payment_id'=>$p['id'],'request_id'=>App::id()]; $app->receiptPrint($v,$print); $app->receiptPrint($v,$print);
     check($printer->sent===1 && count($http->calls)===$calls,'Druck doppelt oder medizinischer Bon extern angefordert');
+
+    // Option gilt auch für bereits gespeicherte lokale Belege. Kein Teildruck bei Abruffehlern.
+    $appendValues=$values; $appendValues['practice']['append_sumup_receipt']=true;
+    $appendCfg=new Config($appendValues); $appendApp=new App($appendCfg,$http,null,$printer); $http->allowReceipt=true;
+    check(str_starts_with($appendApp->receipt($v,$p['id']),'%PDF-') && $http->downloads===1,'Originalbeleg nicht in PDF übernommen');
+    $appendPrint=['payment_id'=>$p['id'],'request_id'=>App::id()];
+    $http->receiptUnavailable=true;
+    rejects(fn()=>$appendApp->receiptPrint($v,$appendPrint),'Unvollständiger Bon gedruckt');
+    check($printer->sent===1 && !$db->one('SELECT * FROM receipt_prints WHERE request_id=?',[$appendPrint['request_id']]),'Fehlgeschlagener Abruf übergibt einen Druckauftrag');
+    $http->receiptUnavailable=false;
+    $appendApp->receiptPrint($v,$appendPrint); $downloads=$http->downloads; $appendApp->receiptPrint($v,$appendPrint);
+    check($printer->sent===2 && $http->downloads===$downloads,'Wiederholter Klick druckt erneut oder lädt Original erneut');
+    check($db->one('SELECT invoice_json FROM payments WHERE id=?',[$p['id']])['invoice_json']===$saved['invoice_json'],'Belegoption verändert Rechnungsdaten');
+    $badValues=$values; $badValues['practice']['append_sumup_receipt']='true';
+    try { new Config($badValues); throw new LogicException('Belegoption akzeptiert Text statt Boolean'); }
+    catch (RuntimeException $e) { check(str_contains($e->getMessage(),'practice.append_sumup_receipt'),'Falscher Konfigurationsfehler'); }
     $app->saveService($v2,['id'=>$ids[0],'label'=>'Geänderter Text','price'=>'99,99','goae_code'=>'250','factor'=>'2,3']);
     $db->query('UPDATE visits SET patient_name=? WHERE id=?',['Geänderter Patient',$v['id']]);
     check($db->one('SELECT invoice_json FROM payments WHERE id=?',[$p['id']])['invoice_json']===$saved['invoice_json'],'Beleg nach Änderung nicht stabil');
@@ -124,7 +147,24 @@ try {
     $invoice['number']=$p['invoice_number']; $invoice['issued_date']='2026-09-19';
     $payment=['status'=>'successful','paid_date'=>'19.09.2026 11:30','reference'=>$saved['reference'],'transaction_id'=>$p['invoice_number'],'mock'=>true];
     $svg=InvoiceReceipt::source($invoice,$payment);
+    check(str_contains($svg,'ZAHLUNGSBESTÄTIGUNG'),'Bisherige Belegvariante fehlt');
     if ($output=getenv('KS_INVOICE_SAMPLE')) file_put_contents($output,ReceiptPdf::convert($svg));
+    $combined=InvoiceReceipt::source($invoice,$payment,$http->original);
+    check(!str_contains($combined,'ZAHLUNGSBESTÄTIGUNG') && !str_contains($combined,'Bezahlt per Karte') && substr_count($combined,'Vielen Dank.')===1,'Lokale Zahlungsbestätigung nicht ersetzt');
+    $originalPng=ReceiptPdf::raster($http->original,420);
+    check(str_contains($combined,base64_encode($originalPng)) && strpos($combined,'Vielen Dank.')<strpos($combined,'<image'),'Original fehlt oder steht vor Vielen Dank');
+    check(str_contains(InvoiceReceipt::source($invoice,$payment,$originalPng),'<image'),'PNG-Originalbeleg nicht unterstützt');
+    if ($output=getenv('KS_INVOICE_APPEND_SAMPLE')) file_put_contents($output,ReceiptPdf::convert($combined));
+    // ESC/POS-Befehle durchlaufen, Rasterdaten nicht mit Steuerbefehlen verwechseln.
+    $combinedPng=ReceiptPdf::raster($combined,420);
+    foreach ([true,false] as $cut) {
+        $raw=ReceiptPrinter::escpos($combinedPng,$cut); $offset=2;
+        while (substr($raw,$offset,3)==="\x1d\x28\x4c") {
+            $length=unpack('v',substr($raw,$offset+3,2))[1]; $offset+=5+$length;
+            check(substr($raw,$offset,7)==="\x1d\x28\x4c\x02\x00\x30\x32",'Grafikdruck-Befehl fehlt'); $offset+=7;
+        }
+        check(substr($raw,$offset)===($cut ? "\x1d\x56\x42\x00" : "\x1b\x64\x03"),'Schnitt zwischen Rechnung und Originalbeleg oder falscher Abschluss');
+    }
     $invoice['items'][0]['label']='Ärztliche Leistung mit sehrlangemzusammenhängendemWortäöüßundmehrZeichen <script>alert(1)</script> & Ende';
     $invoice['items'][0]['reason']=str_repeat('Ausführliche fallbezogene Begründung mit Umlauten. ',5);
     $svg=InvoiceReceipt::source($invoice,$payment);
@@ -134,7 +174,7 @@ try {
     check(str_starts_with(ReceiptPrinter::escpos($png,true),"\x1b\x40"),'Raster nicht druckbar');
     if ($output=getenv('KS_INVOICE_LONG_SAMPLE')) file_put_contents($output,ReceiptPdf::convert($svg));
     $payment['status']='pending'; rejects(fn()=>InvoiceReceipt::source($invoice,$payment),'Renderer druckt unbestätigte Zahlung als bezahlt');
-    echo "OK: Migration, GOÄ-Festpreise, Kombinationen ohne Doppelposition, Begründung, neutrale SumUp-Daten, fester Beleg, Transaktions-ID als Rechnungsnummer, FHIR, PDF und Druck.\n";
+    echo "OK: Migration, GOÄ-Festpreise, Kombinationen ohne Doppelposition, Begründung, neutrale SumUp-Daten, fester Beleg, Transaktions-ID als Rechnungsnummer, FHIR, PDF, optionaler Originalbeleg und Druck ohne Zwischenschnitt.\n";
 } finally {
     if(is_dir($dir)) {
         foreach(new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir,FilesystemIterator::SKIP_DOTS),RecursiveIteratorIterator::CHILD_FIRST) as $file) $file->isDir()?rmdir($file->getPathname()):unlink($file->getPathname());

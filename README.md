@@ -2,7 +2,7 @@
 
 Eine kleine PHP-Webanwendung für Kartenzahlungen am SumUp Solo. Leistungen auswählen,
 Betrag ans Terminal senden und nach erfolgreicher Zahlung bewusst in der Patientenakte
-dokumentieren. **Version 1.4**, von Dr. Thomas Kienzle.
+dokumentieren. **Version 1.4.1**, von Dr. Thomas Kienzle.
 
 ## Video: Sumup in T2med anbinden
 
@@ -67,6 +67,7 @@ name = "Praxis Dr. Muster"
 street = "Musterstraße 12"
 city = "12345 Musterstadt"
 contact = "Telefon 01234 56789"
+append_sumup_receipt = false
 ```
 
 Sobald Name, Straße und Ort ausgefüllt sind, erhalten neue Zahlungen einen lokalen Beleg.
@@ -86,14 +87,31 @@ Auf dem 58-mm-Bon stehen Praxis, Patient, Rechnungsnummer, Rechnungs- und Leistu
 GOÄ-Ziffern, Bezeichnungen, Faktoren, Einzelpreise, Begründungen und Summe. Darunter folgt
 die lokale Zahlungsbestätigung mit Betrag, Zahlungszeitpunkt, Status, neutraler Referenz
 und SumUp-Transaktions-ID. **Diese medizinischen Inhalte werden nicht an SumUp übertragen.**
-PDF, E-Mail-Anhang und Direktdruck verwenden denselben Beleg. Beim E-Mail-Versand enthält
-die PDF damit auch Patienten- und Leistungsdaten; die Oberfläche weist darauf hin.
+
+Optional im Installer **Originalen SumUp-Beleg nach Vielen Dank statt lokaler
+Zahlungsbestätigung anhängen** mit `ja` beantworten oder im vorhandenen Abschnitt
+`[practice]` die Zeile `append_sumup_receipt = true` setzen. Dann folgt nach der Summe
+**„Vielen Dank.“** und direkt darunter der originale SumUp-Beleg. Zwischen beiden Teilen
+wird **nicht geschnitten**. `[printing].cut = true` schneidet erst am Ende des gesamten
+Bons; mit `false` entfällt auch dieser Schnitt. Der Originalbeleg wird proportional auf
+die Bonbreite skaliert und als Bild eingebettet; die lokalen Rechnungsangaben bleiben
+in der PDF Text.
+
+Die Option ist standardmäßig aus. Sie gilt auch beim erneuten Abruf bereits gespeicherter
+lokaler Belege, ohne deren Rechnungsdaten zu ändern. Falls SumUp den Originalbeleg noch
+nicht liefert, kann der Abruf erneut versucht werden; es wird kein unvollständiger Bon
+gedruckt oder versandt. Zahlungen ohne lokale Rechnung behalten ihren bisherigen Beleg.
+
+PDF, E-Mail-Anhang und Direktdruck verwenden dieselbe gewählte Belegvariante. Beim
+E-Mail-Versand enthält die PDF damit auch Patienten- und Leistungsdaten; die Oberfläche
+weist darauf hin.
 
 **Beleglink / E-Mail-Adresse ändern** zeigt den von SumUp gelieferten Originalbeleg-Link sowie
 **PDF herunterladen**. Der SumUp-Link führt weiterhin nur zum Zahlungsnachweis;
-der lokale PDF-Beleg enthält zusätzlich die abgerechneten Leistungen. Für lokale Belege
-ist kein SumUp-Beleglink erforderlich. Nur ältere Zahlungen ohne lokalen Beleg verwenden
-weiterhin die SVG bzw. PNG des geprüften Originalbeleg-Links zur PDF-Erstellung.
+der lokale PDF-Beleg enthält zusätzlich die abgerechneten Leistungen. Bei ausgeschalteter
+Option `append_sumup_receipt` benötigt ein lokaler Beleg keinen SumUp-Beleglink. Mit der
+Option sowie für ältere Zahlungen ohne lokalen Beleg wird die SVG bzw. PNG vom geprüften
+Originalbeleg-Link geladen und lokal aufbereitet.
 
 Für **PDF per E-Mail senden** im Server-Installer den E-Mail-Versand aktivieren und
 SMTP-Server, Port, Verschlüsselung (`starttls`, meist 587, oder `smtps`, meist 465),
@@ -114,7 +132,7 @@ beendet; nach einem Neuladen kann die Adresse dann nur noch manuell eingetragen 
 
 Belegabruf, Drucken und E-Mail-Versand verändern weder Zahlung noch Akteneintrag.
 Der Browser kann nur auf Belege seiner erfolgreich bestätigten Zahlungen zugreifen.
-Lokale Belege entstehen vollständig auf dem Praxisserver. Ältere SumUp-Originalbelege
+Die Zusammenstellung der Belege erfolgt vollständig auf dem Praxisserver. SumUp-Originalbelege
 werden ohne API-Key vom geprüften Beleglink geladen. Die PDF-Umwandlung erfolgt lokal
 mit `rsvg-convert`. Konverter und PHPMailer kommen als
 Distributionspakete (`librsvg2-bin`, `libphp-phpmailer`) über den Installer.
@@ -122,8 +140,9 @@ Im Testmodus wird ein markierter Testbeleg erzeugt und kein SMTP-Versand ausgef�
 
 ## Optionaler Direktdruck auf den Epson TM-m10
 
-**Beleg drucken** übergibt den lokalen Leistungsbeleg mit Zahlungsbestätigung direkt an
-den TM-m10 mit 58-mm-Rolle; ältere Zahlungen behalten ihren SumUp-Originalbeleg.
+**Beleg drucken** übergibt den lokalen Leistungsbeleg mit Zahlungsbestätigung oder
+angehängtem SumUp-Originalbeleg direkt an den TM-m10 mit 58-mm-Rolle; ältere Zahlungen
+behalten ihren SumUp-Originalbeleg.
 Der Button erscheint nur nach erfolgreicher Zahlung und bei aktiviertem Direktdruck.
 Ein Klick druckt, anschließend ist ein bewusster Nachdruck möglich. PDF-Anzeige,
 E-Mail und Aktendokumentation bleiben unabhängig davon bedienbar.
@@ -306,7 +325,7 @@ Er enthält `client.json` mit Serveradresse, Starter-Schlüssel und Zertifikat-F
 sowie das öffentliche Serverzertifikat. **Diesen Ordner nicht ins Repository oder unter
 den Webroot legen.** Er ist ausschließlich für berechtigte Praxisarbeitsplätze vorgesehen.
 
-Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.4` und prüfen
+Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.4.1` und prüfen
 seine SHA-256-Prüfsumme. Python, Go und PHP werden auf dem Arbeitsplatz nicht benötigt.
 Alternativ vorab die Release-Dateien und `SHA256SUMS` in diesen Ordner legen.
 
@@ -543,7 +562,7 @@ bash scripts/build-client.sh
 ```
 
 GitHub Actions prüft diese Abläufe und baut die Starter für Windows, macOS und Linux.
-Ein Tag `v1.4` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
+Ein Tag `v1.4.1` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
 
 ## Stand der Integration
 

@@ -57,3 +57,6 @@ name = ""
 street = ""
 city = ""
 contact = ""
+# Statt lokaler Zahlungsbestätigung: Vielen Dank. + SumUp-Originalbeleg.
+# Kein Schnitt dazwischen; printing.cut gilt nur am Ende des gesamten Bons.
+append_sumup_receipt = false

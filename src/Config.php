@@ -38,6 +38,7 @@ final class Config {
             $value = $this->get('practice', $field, '');
             if (!is_string($value) || mb_strlen($value) > 200 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new \RuntimeException('Ungültige Praxisangabe: ' . $field);
         }
+        if (!is_bool($this->get('practice', 'append_sumup_receipt', false))) throw new \RuntimeException('practice.append_sumup_receipt muss true oder false sein.');
         if ($this->get('sumup', 'mode') === 'live') {
             foreach (['api_key', 'affiliate_key', 'app_id', 'merchant_code', 'reader_id'] as $key) {
                 if (!is_string($this->get('sumup', $key)) || $this->get('sumup', $key) === '') throw new \RuntimeException("SumUp-Konfiguration: $key fehlt.");

@@ -271,7 +271,8 @@ final class App {
         $paid = (new \DateTimeImmutable('@' . $payment['paid_at']))->setTimezone(new \DateTimeZone($invoice['timezone']));
         $invoice['number'] = $number; $invoice['issued_date'] = $paid->format('Y-m-d');
         return InvoiceReceipt::source($invoice, ['status' => $payment['payment_status'], 'paid_date' => $paid->format('d.m.Y H:i'),
-            'reference' => $payment['reference'], 'transaction_id' => $number, 'mock' => $invoice['mock']]);
+            'reference' => $payment['reference'], 'transaction_id' => $number, 'mock' => $invoice['mock']],
+            $this->config->get('practice', 'append_sumup_receipt', false) ? $this->sumup->receiptSource($payment) : null);
     }
     public function receiptShare(array $visit, string $id): array {
         $payment = $this->payment($visit, $id);

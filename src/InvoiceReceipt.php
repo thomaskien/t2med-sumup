@@ -4,7 +4,7 @@ namespace KienzleSumup;
 
 /** Lokaler Bon: keinerlei Abruf oder Übertragung medizinischer Daten an SumUp. */
 final class InvoiceReceipt {
-    public static function source(array $invoice, array $payment): string {
+    public static function source(array $invoice, array $payment, ?string $sumupReceipt = null): string {
         if ($payment['status'] !== 'successful') throw new Problem('Ein bezahlter Beleg benötigt eine bestätigte Zahlung.', 409);
         $parts = []; $y = 28;
         $text = static function (string $value, bool $bold = false, int $size = 22) use (&$parts, &$y): void {
@@ -53,13 +53,24 @@ final class InvoiceReceipt {
         }
         $rule(); $amount('GESAMT', $invoice['total_cents'], true);
         $rule();
-        $text('ZAHLUNGSBESTÄTIGUNG', true);
-        $amount('Bezahlt per Karte', $invoice['total_cents'], true);
-        $text('Status: ERFOLGREICH'); $text($payment['paid_date']);
-        $y += 8; $text('Zahlungsreferenz:', false, 20); $text($payment['reference'], false, 20);
-        $y += 8; $text('SumUp-Transaktion:', false, 20); $text($payment['transaction_id'], false, 20);
-        $rule(); $text('Vielen Dank.');
+        if ($sumupReceipt === null) {
+            $text('ZAHLUNGSBESTÄTIGUNG', true);
+            $amount('Bezahlt per Karte', $invoice['total_cents'], true);
+            $text('Status: ERFOLGREICH'); $text($payment['paid_date']);
+            $y += 8; $text('Zahlungsreferenz:', false, 20); $text($payment['reference'], false, 20);
+            $y += 8; $text('SumUp-Transaktion:', false, 20); $text($payment['transaction_id'], false, 20);
+            $rule();
+        }
+        $text('Vielen Dank.');
+        if ($sumupReceipt !== null) {
+            // Nur das gerenderte Bild einbetten, kein fremdes SVG in unser Dokument übernehmen.
+            $png = ReceiptPdf::raster($sumupReceipt, 420);
+            $size = getimagesizefromstring($png);
+            if (!$size || $size[0] !== 420 || $size[1] < 1 || $size[1] > 20000) throw new Problem('Ungültige Belegabmessungen.', 502);
+            $parts[] = '<image x="0" y="'.$y.'" width="420" height="'.$size[1].'" xlink:href="data:image/png;base64,'.base64_encode($png).'"/>';
+            $y += $size[1];
+        }
         $height = $y + 4;
-        return '<svg xmlns="http://www.w3.org/2000/svg" width="52.5mm" height="'.($height / 8).'mm" viewBox="0 0 420 '.$height.'"><rect width="420" height="'.$height.'" fill="white"/><g fill="black" font-family="DejaVu Sans Mono, monospace">'.implode('', $parts).'</g></svg>';
+        return '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="52.5mm" height="'.($height / 8).'mm" viewBox="0 0 420 '.$height.'"><rect width="420" height="'.$height.'" fill="white"/><g fill="black" font-family="DejaVu Sans Mono, monospace">'.implode('', $parts).'</g></svg>';
     }
 }

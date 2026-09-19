@@ -1,17 +1,16 @@
-Version 1.4 der Kartenzahlungsseite für T2med und SumUp Solo.
+Version 1.4.1 der Kartenzahlungsseite für T2med und SumUp Solo.
 
-- Einzelleistungen mit frei festgelegtem Preis sowie optionaler GOÄ-Ziffer und
-  Steigerungsfaktor direkt auf der Webseite pflegen. Der Faktor verändert den Preis nicht.
-- Kombinationen aus vorhandenen Leistungen anlegen und auswählen. Gemeinsame Positionen
-  wie eine Blutentnahme werden auch über mehrere Kombinationen hinweg nur einmal berechnet.
-- Lokaler Leistungsbeleg bzw. GOÄ-Rechnung mit Praxis- und Patientendaten, Leistungsdatum,
-  Positionen, Faktoren, Begründungen und Gesamtsumme. Darunter die SumUp-Zahlungsbestätigung.
-- Als Rechnungsnummer dient die SumUp-Transaktions-ID. Sie erscheint auch im manuellen
-  Akteneintrag. Medizinische Leistungsdaten bleiben bei der Zahlungsabwicklung lokal.
-- PDF, E-Mail-Anhang und optionaler 58-mm-Direktdruck verwenden denselben lokalen Beleg.
-  Belegdaten werden beim Zahlungsstart fest gespeichert und durch spätere Änderungen
-  nicht verändert. Bestehende Zahlungen behalten ihren bisherigen Beleg.
-- Installer und TOML enthalten die Praxisdaten. Starter und Download-URLs auf Version 1.4.
+- Optional folgt nach den Rechnungspositionen und der Gesamtsumme „Vielen Dank.“ und
+  anschließend der originale SumUp-Beleg. Die lokale Zahlungsbestätigung entfällt dabei.
+- Rechnung und Originalbeleg bilden einen durchgehenden Bon ohne Zwischenschnitt.
+  Die vorhandene Einstellung `printing.cut` steuert ausschließlich den Schnitt am Ende.
+- PDF, E-Mail-Anhang und Direktdruck verwenden dieselbe Belegvariante. Bei einem
+  Abruffehler des Originals wird kein unvollständiger Beleg gedruckt oder versandt;
+  ein erneuter Versuch ist möglich.
+- Im Installer und unter `[practice]` mit `append_sumup_receipt = true` aktivierbar.
+  Standardmäßig bleibt die Option aus. Bereits gespeicherte lokale Rechnungen lassen
+  sich ebenfalls mit angehängtem Originalbeleg ausgeben; ihre Rechnungsdaten bleiben erhalten.
+- Starter und Download-URLs auf Version 1.4.1 aktualisiert.
 
 Update auf dem Anwendungsserver:
 
@@ -20,10 +19,16 @@ git pull --ff-only
 sudo bash scripts/install-server.sh
 ```
 
-Im Installer **Praxis / Rechnungsaussteller**, Straße und Hausnummer sowie PLZ und Ort
-angeben. Der Kontakt ist optional. Die gleichen Felder stehen unter `[practice]` in
-`/etc/kienzle-sumup/kienzle-sumup.toml`. Danach die Zahlungsseite neu laden.
+Im Installer **Originalen SumUp-Beleg nach Vielen Dank statt lokaler Zahlungsbestätigung
+anhängen** mit `ja` beantworten. Alternativ im vorhandenen Abschnitt `[practice]` der
+Datei `/etc/kienzle-sumup/kienzle-sumup.toml` setzen:
 
-Bestehende Einstellungen, Leistungen und Zahlungen werden erhalten. Der Installer
-aktualisiert die Datenbank. Die Binärdateien sind Starter und benötigen die vom
-Server-Installer erstellte `client.json`.
+```toml
+append_sumup_receipt = true
+```
+
+Danach die Zahlungsseite neu laden. Für überhaupt keinen Schnitt zusätzlich im vorhandenen
+Abschnitt `[printing]` `cut = false` setzen.
+
+Bestehende Einstellungen, Leistungen und Zahlungen werden erhalten. Die Binärdateien
+sind Starter und benötigen die vom Server-Installer erstellte `client.json`.

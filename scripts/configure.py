@@ -124,6 +124,9 @@ def main():
     practice = {}
     for key, label in [('name','Praxis / Rechnungsaussteller'),('street','Straße und Hausnummer'),('city','PLZ und Ort'),('contact','Kontakt auf dem Beleg (optional)')]:
         practice[key] = ask(label, get('practice',key,mail['from_name'] if key=='name' else ''))
+    answer = ask('Originalen SumUp-Beleg nach Vielen Dank statt lokaler Zahlungsbestätigung anhängen (ja/nein)', 'ja' if get('practice','append_sumup_receipt',False) else 'nein')
+    if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+    practice['append_sumup_receipt'] = answer == 'ja'
     config['practice'] = practice
     text = '# Kienzle-SumUp · Zugangsdaten nicht weitergeben.\n'
     for section, values in config.items():

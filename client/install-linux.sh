@@ -10,8 +10,8 @@ umask 077
 mkdir -p "$target" "$applications"
 asset="kienzle-sumup-linux-$arch"
 if [ ! -f "$asset" ]; then
-  curl -fL --proto '=https' --tlsv1.2 "https://github.com/thomaskien/t2med-sumup/releases/download/v1.4/$asset" -o "$asset"
-  curl -fL --proto '=https' --tlsv1.2 'https://github.com/thomaskien/t2med-sumup/releases/download/v1.4/SHA256SUMS' -o SHA256SUMS
+  curl -fL --proto '=https' --tlsv1.2 "https://github.com/thomaskien/t2med-sumup/releases/download/v1.4.1/$asset" -o "$asset"
+  curl -fL --proto '=https' --tlsv1.2 'https://github.com/thomaskien/t2med-sumup/releases/download/v1.4.1/SHA256SUMS' -o SHA256SUMS
 fi
 test -f SHA256SUMS || { echo 'SHA256SUMS fehlt.'; exit 1; }
 expected=$(awk -v name="$asset" '$2==name {print $1}' SHA256SUMS)

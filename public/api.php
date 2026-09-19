@@ -51,6 +51,8 @@ try {
             'receipt_print' => $app->receiptPrint($visit, $input),
             'service_save' => (function () use ($app, $visit, $input) { $app->saveService($visit, $input); return ['ok' => true]; })(),
             'service_delete' => (function () use ($app, $visit, $input) { $app->deleteService($visit, App::string($input, 'id', 32)); return ['ok' => true]; })(),
+            'group_save' => (function () use ($app, $visit, $input) { $app->saveGroup($visit, $input); return ['ok' => true]; })(),
+            'group_delete' => (function () use ($app, $visit, $input) { $app->deleteGroup($visit, App::string($input, 'id', 32)); return ['ok' => true]; })(),
             'mock' => (function () use ($app, $visit, $input) { $app->mock($visit, $input); return ['ok' => true]; })(),
             default => throw new Problem('Unbekannte Aktion.', 404),
         };

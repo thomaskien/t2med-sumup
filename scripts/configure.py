@@ -120,6 +120,11 @@ def main():
         if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
         printing['cut'] = answer == 'ja'
     config['printing'] = printing
+    print('Praxisdaten für lokale Leistungsbelege / GOÄ-Rechnungen (Name und Anschrift erforderlich).')
+    practice = {}
+    for key, label in [('name','Praxis / Rechnungsaussteller'),('street','Straße und Hausnummer'),('city','PLZ und Ort'),('contact','Kontakt auf dem Beleg (optional)')]:
+        practice[key] = ask(label, get('practice',key,mail['from_name'] if key=='name' else ''))
+    config['practice'] = practice
     text = '# Kienzle-SumUp · Zugangsdaten nicht weitergeben.\n'
     for section, values in config.items():
         text += '\n['+section+']\n'

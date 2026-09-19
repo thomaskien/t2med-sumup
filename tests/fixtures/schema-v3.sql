@@ -1,16 +1,10 @@
 CREATE TABLE IF NOT EXISTS services (
     id TEXT PRIMARY KEY, label TEXT NOT NULL, price_cents INTEGER NOT NULL CHECK(price_cents > 0),
-    active INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL,
-    goae_code TEXT NOT NULL DEFAULT '', factor TEXT NOT NULL DEFAULT '',
-    fee_type TEXT NOT NULL DEFAULT 'standard', on_request INTEGER NOT NULL DEFAULT 0
-);
-CREATE TABLE IF NOT EXISTS service_groups (
-    id TEXT PRIMARY KEY, label TEXT NOT NULL, service_ids_json TEXT NOT NULL,
     active INTEGER NOT NULL DEFAULT 1, updated_at INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS visits (
     id TEXT PRIMARY KEY, context_id TEXT NOT NULL, patient_id TEXT NOT NULL,
-    patient_name TEXT NOT NULL, patient_birthdate TEXT NOT NULL DEFAULT '', patient_address TEXT NOT NULL DEFAULT '[]',
+    patient_name TEXT NOT NULL, patient_birthdate TEXT NOT NULL DEFAULT '',
     oauth_cipher TEXT NOT NULL, created_at INTEGER NOT NULL, expires_at INTEGER NOT NULL,
     completed_at INTEGER, mock_document_fail INTEGER NOT NULL DEFAULT 0
 );
@@ -34,8 +28,7 @@ CREATE TABLE IF NOT EXISTS payments (
     payment_status TEXT NOT NULL, doc_status TEXT NOT NULL DEFAULT 'pending',
     checkout_id TEXT, client_transaction_id TEXT, transaction_id TEXT,
     created_at INTEGER NOT NULL, paid_at INTEGER, checked_at INTEGER NOT NULL DEFAULT 0,
-    fhir_resource_id TEXT, fhir_written_at INTEGER, error_message TEXT NOT NULL DEFAULT '',
-    invoice_json TEXT
+    fhir_resource_id TEXT, fhir_written_at INTEGER, error_message TEXT NOT NULL DEFAULT ''
 );
 CREATE UNIQUE INDEX IF NOT EXISTS reader_busy ON payments(reader_id)
     WHERE payment_status IN ('starting','pending','unknown','cancel_requested');

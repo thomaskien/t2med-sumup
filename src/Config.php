@@ -34,6 +34,10 @@ final class Config {
         if ((int)($parts['port'] ?? 443) !== $this->get('app', 'port')) throw new \RuntimeException('Port und base_url widersprechen sich.');
         if (!str_starts_with((string)$this->get('app', 'state_dir'), '/')) throw new \RuntimeException('state_dir muss absolut sein.');
         new \DateTimeZone((string)$this->get('app', 'timezone'));
+        foreach (['name', 'street', 'city', 'contact'] as $field) {
+            $value = $this->get('practice', $field, '');
+            if (!is_string($value) || mb_strlen($value) > 200 || preg_match('/[\x00-\x1f\x7f]/', $value)) throw new \RuntimeException('Ungültige Praxisangabe: ' . $field);
+        }
         if ($this->get('sumup', 'mode') === 'live') {
             foreach (['api_key', 'affiliate_key', 'app_id', 'merchant_code', 'reader_id'] as $key) {
                 if (!is_string($this->get('sumup', $key)) || $this->get('sumup', $key) === '') throw new \RuntimeException("SumUp-Konfiguration: $key fehlt.");
@@ -75,6 +79,10 @@ final class Config {
 
     public function get(string $section, string $key, mixed $default = null): mixed {
         return $this->values[$section][$key] ?? $default;
+    }
+    public function practiceReady(): bool {
+        foreach (['name', 'street', 'city'] as $field) if (trim($this->get('practice', $field, '')) === '') return false;
+        return true;
     }
 
     public static function load(string $path): self {

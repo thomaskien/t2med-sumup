@@ -5,8 +5,8 @@ $arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64' -or $env:PROCESSOR_ARCHITEW6
 $asset = "kienzle-sumup-windows-$arch.exe"
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 if (!(Test-Path $asset)) {
-    Invoke-WebRequest "https://github.com/thomaskien/t2med-sumup/releases/download/v1.3/$asset" -OutFile $asset -UseBasicParsing
-    Invoke-WebRequest 'https://github.com/thomaskien/t2med-sumup/releases/download/v1.3/SHA256SUMS' -OutFile SHA256SUMS -UseBasicParsing
+    Invoke-WebRequest "https://github.com/thomaskien/t2med-sumup/releases/download/v1.4/$asset" -OutFile $asset -UseBasicParsing
+    Invoke-WebRequest 'https://github.com/thomaskien/t2med-sumup/releases/download/v1.4/SHA256SUMS' -OutFile SHA256SUMS -UseBasicParsing
 }
 $line = Get-Content SHA256SUMS | Where-Object { ($_ -split '\s+')[1] -eq $asset }
 if (!$line -or ((Get-FileHash $asset -Algorithm SHA256).Hash.ToLowerInvariant() -ne ($line -split '\s+')[0])) { throw 'Prüfsumme stimmt nicht.' }

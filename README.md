@@ -2,7 +2,7 @@
 
 Eine kleine PHP-Webanwendung für Kartenzahlungen am SumUp Solo. Leistungen auswählen,
 Betrag ans Terminal senden und nach erfolgreicher Zahlung bewusst in der Patientenakte
-dokumentieren. **Version 1.3**, von Dr. Thomas Kienzle.
+dokumentieren. **Version 1.4**, von Dr. Thomas Kienzle.
 
 ## Video: Sumup in T2med anbinden
 
@@ -17,11 +17,12 @@ dokumentieren. **Version 1.3**, von Dr. Thomas Kienzle.
 ## Ablauf
 
 1. In T2med beim Patienten den Button **Kienzle-SumUp** betätigen.
-2. Leistungen auswählen oder einen sonstigen Betrag eingeben.
+2. Einzelleistungen oder Kombinationen auswählen, Leistungsdatum prüfen und ggf. einen sonstigen Betrag eingeben.
 3. **Mit Karte kassieren** anklicken und Zahlung am Solo durchführen.
 4. Die Seite zeigt den von SumUp bestätigten Zahlungsstatus.
-   Bei Bedarf **Zahlungsbeleg / PDF** anklicken: Der Originalbeleg von SumUp wird
-   als PDF geöffnet und kann gedruckt oder gespeichert werden.
+   Bei eingerichteten Praxisdaten öffnet **Rechnung / Leistungsbeleg als PDF** den lokal
+   erstellten Beleg mit allen Positionen und der SumUp-Zahlungsbestätigung darunter.
+   Bestandszahlungen behalten ihren bisherigen **Zahlungsbeleg / PDF** von SumUp.
 5. Optional **Beleg mailen an „emailadresse“** direkt unter dem PDF-Button anklicken.
    Ein Klick versendet den PDF-Anhang an die angezeigte Adresse.
 6. Optional **Beleg drucken** anklicken, wenn der Direktdruck auf den TM-m10 aktiviert ist.
@@ -33,10 +34,66 @@ dokumentieren. **Version 1.3**, von Dr. Thomas Kienzle.
 anlegen, bearbeiten und löschen. Löschen entfernt sie aus der Auswahl; gespeicherte
 Zahlungen behalten ihre damaligen Bezeichnungen und Preise.
 
+## GOÄ-Angaben, Kombinationen und eigener Beleg
+
+In **Leistungen verwalten** bleibt der Preis frei festlegbar. Unter **GOÄ-Angaben ergänzen**
+werden Ziffer, Steigerungsfaktor und Gebührenrahmen gespeichert. Der Faktor wird auf den
+Beleg geschrieben und **nicht nochmals mit dem Preis multipliziert**. Für Leistungen
+auf Verlangen gibt es eine entsprechende Kennzeichnung. Preise, Ziffern und Bezeichnungen
+werden von der Praxis gepflegt; ein vollständiger GOÄ-Katalog ist nicht enthalten.
+
+**Kombinationen verwalten** fasst vorhandene Einzelleistungen zusammen. Beispiel:
+„Laborprofil Eins“ enthält Laborwert Eins und Blutentnahme, „Laborprofil Zwei“ enthält
+Laborwert Zwei und dieselbe Blutentnahme. Bei gemeinsamer Auswahl erscheinen drei
+Positionen. Auch eine zusätzlich einzeln gewählte Blutentnahme zählt nur einmal.
+Entscheidend ist dieselbe gespeicherte Einzelleistung, nicht nur ein gleicher Name oder
+eine gleiche GOÄ-Ziffer. Die Vorschau **Ausgewählte Positionen** zeigt die tatsächliche Summe.
+Eine in Kombinationen verwendete Leistung muss vor dem Löschen aus diesen entfernt werden.
+
+Die Gebührenrahmen orientieren sich an [§ 5 GOÄ](https://www.gesetze-im-internet.de/go__1982/__5.html):
+ärztlich 2,3 / maximal 3,5, technisch (A, E, O) 1,8 / maximal 2,5 und Labor (M / Nr. 437)
+1,15 / maximal 1,3. Oberhalb der jeweiligen Schwelle ist vor dem Kassieren eine
+fallbezogene Begründung einzutragen. Sie erscheint auf dem Beleg und im Akteneintrag.
+Das Leistungsdatum ist gesondert wählbar. Die Praxis prüft die fachliche Zuordnung und
+den eingegebenen Preis; die Anwendung prüft keine GOÄ-Ausschlüsse oder Analogbewertungen.
+Hinweise zu Rechnungsangaben: [§ 12 GOÄ](https://www.gesetze-im-internet.de/go__1982/__12.html).
+
+Der Installer fragt Praxisname und Anschrift ab. Alternativ in
+`/etc/kienzle-sumup/kienzle-sumup.toml` ergänzen:
+
+```toml
+[practice]
+name = "Praxis Dr. Muster"
+street = "Musterstraße 12"
+city = "12345 Musterstadt"
+contact = "Telefon 01234 56789"
+```
+
+Sobald Name, Straße und Ort ausgefüllt sind, erhalten neue Zahlungen einen lokalen Beleg.
+Ohne diese Angaben bleibt für Festpreise der bisherige SumUp-Beleg verfügbar; GOÄ-Zahlungen
+fordern zunächst die Praxisdaten an. `contact` ist optional. Patient und aktuelle Anschrift
+werden aus t2med übernommen, soweit dort vorhanden. Alle Belegdaten werden beim Start
+der Zahlung unveränderlich gespeichert. Spätere Änderungen am Katalog, Patienten oder an
+den Praxisdaten ändern frühere Belege nicht.
+
+**Rechnungsnummer ist die SumUp-Transaktions-ID der erfolgreichen Zahlung.** Sie wird
+auch in der Akte dokumentiert. Vor erfolgreicher Zahlung gibt es keinen bezahlten Beleg
+und noch keine Rechnungsnummer. Abgelehnte oder ungeklärte Versuche bleiben unbezahlt.
+Bestehen alle Positionen aus GOÄ-Leistungen, lautet die Überschrift „Privatärztliche Rechnung“;
+bei freien oder gemischten Positionen „Leistungsbeleg“.
+
+Auf dem 58-mm-Bon stehen Praxis, Patient, Rechnungsnummer, Rechnungs- und Leistungsdatum,
+GOÄ-Ziffern, Bezeichnungen, Faktoren, Einzelpreise, Begründungen und Summe. Darunter folgt
+die lokale Zahlungsbestätigung mit Betrag, Zahlungszeitpunkt, Status, neutraler Referenz
+und SumUp-Transaktions-ID. **Diese medizinischen Inhalte werden nicht an SumUp übertragen.**
+PDF, E-Mail-Anhang und Direktdruck verwenden denselben Beleg. Beim E-Mail-Versand enthält
+die PDF damit auch Patienten- und Leistungsdaten; die Oberfläche weist darauf hin.
+
 **Beleglink / E-Mail-Adresse ändern** zeigt den von SumUp gelieferten Originalbeleg-Link sowie
-**PDF herunterladen**. Die PDF wird aus der SVG (alternativ PNG) des Originalbelegs
-erzeugt. Voraussetzung ist ein gültiger Beleglink in der geprüften Transaktion.
-Die frühere zusätzliche JSON-Belegabfrage wird nicht mehr verwendet.
+**PDF herunterladen**. Der SumUp-Link führt weiterhin nur zum Zahlungsnachweis;
+der lokale PDF-Beleg enthält zusätzlich die abgerechneten Leistungen. Für lokale Belege
+ist kein SumUp-Beleglink erforderlich. Nur ältere Zahlungen ohne lokalen Beleg verwenden
+weiterhin die SVG bzw. PNG des geprüften Originalbeleg-Links zur PDF-Erstellung.
 
 Für **PDF per E-Mail senden** im Server-Installer den E-Mail-Versand aktivieren und
 SMTP-Server, Port, Verschlüsselung (`starttls`, meist 587, oder `smtps`, meist 465),
@@ -57,14 +114,16 @@ beendet; nach einem Neuladen kann die Adresse dann nur noch manuell eingetragen 
 
 Belegabruf, Drucken und E-Mail-Versand verändern weder Zahlung noch Akteneintrag.
 Der Browser kann nur auf Belege seiner erfolgreich bestätigten Zahlungen zugreifen.
-Der Originalbeleg wird ohne API-Key vom geprüften SumUp-Beleglink geladen und lokal
-mit `rsvg-convert` in PDF umgewandelt. Konverter und PHPMailer kommen als
+Lokale Belege entstehen vollständig auf dem Praxisserver. Ältere SumUp-Originalbelege
+werden ohne API-Key vom geprüften Beleglink geladen. Die PDF-Umwandlung erfolgt lokal
+mit `rsvg-convert`. Konverter und PHPMailer kommen als
 Distributionspakete (`librsvg2-bin`, `libphp-phpmailer`) über den Installer.
 Im Testmodus wird ein markierter Testbeleg erzeugt und kein SMTP-Versand ausgeführt.
 
 ## Optionaler Direktdruck auf den Epson TM-m10
 
-**Beleg drucken** übergibt den SumUp-Originalbeleg direkt an den TM-m10 mit 58-mm-Rolle.
+**Beleg drucken** übergibt den lokalen Leistungsbeleg mit Zahlungsbestätigung direkt an
+den TM-m10 mit 58-mm-Rolle; ältere Zahlungen behalten ihren SumUp-Originalbeleg.
 Der Button erscheint nur nach erfolgreicher Zahlung und bei aktiviertem Direktdruck.
 Ein Klick druckt, anschließend ist ein bewusster Nachdruck möglich. PDF-Anzeige,
 E-Mail und Aktendokumentation bleiben unabhängig davon bedienbar.
@@ -96,7 +155,7 @@ Neuladen der Webseite. Ohne `[printing]` bleibt eine ältere Konfiguration weite
 nutzbar und der Direktdruck aus. Der PDF-Konverter muss installiert und die
 Druckerfreigabe vom Anwendungsserver erreichbar sein.
 
-Der Server wandelt den Originalbeleg in Epson-ESC/POS-Grafikdaten um und sendet sie
+Der Server wandelt den Beleg in Epson-ESC/POS-Grafikdaten um und sendet sie
 an Samba. Es wird kein weiterer CUPS-Dienst auf dem Anwendungsserver eingerichtet.
 **Druckauftrag übergeben** bestätigt die Annahme durch die Freigabe, nicht die
 tatsächliche Papierausgabe. Bei einer verlorenen Antwort prüft ein weiterer Klick
@@ -247,7 +306,7 @@ Er enthält `client.json` mit Serveradresse, Starter-Schlüssel und Zertifikat-F
 sowie das öffentliche Serverzertifikat. **Diesen Ordner nicht ins Repository oder unter
 den Webroot legen.** Er ist ausschließlich für berechtigte Praxisarbeitsplätze vorgesehen.
 
-Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.3` und prüfen
+Die Installer laden den passenden fertigen Starter aus GitHub Release `v1.4` und prüfen
 seine SHA-256-Prüfsumme. Python, Go und PHP werden auf dem Arbeitsplatz nicht benötigt.
 Alternativ vorab die Release-Dateien und `SHA256SUMS` in diesen Ordner legen.
 
@@ -472,6 +531,7 @@ lokal in `mock_records` gespeichert. Entwicklungsmodus erlaubt keine echten Schn
 
 ```bash
 php tests/critical.php
+php tests/invoice.php
 cd client && go test ./...
 ```
 
@@ -483,7 +543,7 @@ bash scripts/build-client.sh
 ```
 
 GitHub Actions prüft diese Abläufe und baut die Starter für Windows, macOS und Linux.
-Ein Tag `v1.3` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
+Ein Tag `v1.4` veröffentlicht die Pakete und Prüfsummen automatisch als GitHub Release.
 
 ## Stand der Integration
 

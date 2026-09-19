@@ -103,7 +103,13 @@ final class SumUpClient {
                 'SUCCESSFUL' => 'successful', 'FAILED' => 'failed', 'CANCELLED' => 'cancelled',
                 'PENDING' => 'pending', default => 'unknown',
             };
-            return ['status' => $status, 'transaction_id' => $data['id'] ?? null];
+            if ($status === 'successful' && (!is_string($data['id'] ?? null) || $data['id'] === '')) throw new TransportError('SumUp hat den Zahlungserfolg ohne Transaktions-ID geliefert. Der Status wird erneut geprüft.');
+            $paidAt = null;
+            if ($status === 'successful' && is_string($data['timestamp'] ?? null) && preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/D', $data['timestamp'])) {
+                try { $paidAt = (new \DateTimeImmutable($data['timestamp']))->getTimestamp(); } catch (\Exception) {}
+                if ($paidAt !== null && ($paidAt <= 0 || $paidAt > time() + 300)) $paidAt = null;
+            }
+            return ['status' => $status, 'transaction_id' => $data['id'] ?? null, 'paid_at' => $paidAt];
         }
         if ($response['status'] !== 404) throw new TransportError('SumUp-Status derzeit nicht erreichbar.');
         // Noch kein Transaktionsdatensatz: Reader-Checkout kann bereits einen

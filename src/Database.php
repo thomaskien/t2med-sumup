@@ -13,11 +13,16 @@ final class Database {
     }
     public function migrate(): void {
         $version = (int)$this->pdo->query('PRAGMA user_version')->fetchColumn();
-        if ($version > 3) throw new \RuntimeException('Datenbank ist neuer als die Anwendung.');
-        if ($version === 3) return;
+        if ($version > 4) throw new \RuntimeException('Datenbank ist neuer als die Anwendung.');
+        if ($version === 4) return;
         $this->transaction(function (): void {
             $this->pdo->exec((string)file_get_contents(__DIR__ . '/schema.sql'));
-            $this->pdo->exec('PRAGMA user_version=3');
+            foreach (['services' => ['goae_code' => "TEXT NOT NULL DEFAULT ''", 'factor' => "TEXT NOT NULL DEFAULT ''", 'fee_type' => "TEXT NOT NULL DEFAULT 'standard'", 'on_request' => 'INTEGER NOT NULL DEFAULT 0'],
+                'visits' => ['patient_address' => "TEXT NOT NULL DEFAULT '[]'"], 'payments' => ['invoice_json' => 'TEXT']] as $table => $columns) {
+                $existing = array_column($this->pdo->query('PRAGMA table_info(' . $table . ')')->fetchAll(), 'name');
+                foreach ($columns as $name => $type) if (!in_array($name, $existing, true)) $this->pdo->exec("ALTER TABLE $table ADD COLUMN $name $type");
+            }
+            $this->pdo->exec('PRAGMA user_version=4');
         });
     }
     public function query(string $sql, array $params = []): \PDOStatement {

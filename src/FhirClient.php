@@ -16,7 +16,7 @@ final class FhirClient {
             $this->config->get('fhir', 'ca_file', ''), $this->config->get('fhir', 'pin_certificate', false));
     }
     public function patient(string $context, string $token): array {
-        if ($this->config->get('fhir', 'mode') === 'mock') return ['id' => 'demo-' . $context, 'name' => 'Erika Musterfrau', 'birthdate' => '1980-04-12', 'email' => 'erika@example.invalid'];
+        if ($this->config->get('fhir', 'mode') === 'mock') return ['id' => 'demo-' . $context, 'name' => 'Erika Musterfrau', 'birthdate' => '1980-04-12', 'email' => 'erika@example.invalid', 'address' => ['Musterstraße 1', '12345 Musterstadt']];
         try {
             $result = $this->request('GET', '/Patient?' . http_build_query(['identifier' => self::CONTEXT . '|' . $context]), $token, null, true);
         } catch (TransportError $e) {
@@ -35,15 +35,31 @@ final class FhirClient {
             is_array($contact) && ($contact['system'] ?? '') === 'email' && ($contact['use'] ?? '') !== 'old' &&
             is_string($contact['value'] ?? null) && strlen($contact['value']) <= 254 && filter_var($contact['value'], FILTER_VALIDATE_EMAIL));
         usort($emails, static fn($a, $b) => ($a['rank'] ?? PHP_INT_MAX) <=> ($b['rank'] ?? PHP_INT_MAX));
-        return ['id' => (string)$p['id'], 'name' => $label ?: 'Patient ' . $p['id'], 'birthdate' => $p['birthDate'] ?? '', 'email' => $emails[0]['value'] ?? ''];
+        $address = [];
+        foreach (is_array($p['address'] ?? null) ? $p['address'] : [] as $a) {
+            if (!is_array($a) || ($a['use'] ?? '') === 'old') continue;
+            $end = $a['period']['end'] ?? '';
+            if (is_string($end) && $end !== '' && substr($end, 0, 10) < date('Y-m-d')) continue;
+            $lines = array_filter(is_array($a['line'] ?? null) ? $a['line'] : [], 'is_string');
+            $lines[] = trim((string)($a['postalCode'] ?? '') . ' ' . (string)($a['city'] ?? ''));
+            $address = array_values(array_filter(array_map(static fn($line) => mb_substr(preg_replace('/[\x00-\x1f\x7f]/u', ' ', $line), 0, 200), array_slice($lines, 0, 5))));
+            if ($address) break;
+        }
+        return ['id' => (string)$p['id'], 'name' => $label ?: 'Patient ' . $p['id'], 'birthdate' => $p['birthDate'] ?? '', 'email' => $emails[0]['value'] ?? '', 'address' => $address];
     }
     public function resource(array $visit, array $payment): array {
         $zone = new \DateTimeZone($this->config->get('app', 'timezone'));
         $paid = (new \DateTimeImmutable('@' . $payment['paid_at']))->setTimezone($zone);
         $services = json_decode($payment['services_json'], true, 32, JSON_THROW_ON_ERROR);
-        $lines = array_map(static fn (array $s): string => $s['label'] . ' ' . Money::format($s['price_cents']), $services);
+        $lines = array_map(static fn (array $s): string => (($s['goae_code'] ?? '') !== '' ? 'GOÄ ' . $s['goae_code'] . ', Faktor ' . str_replace('.', ',', $s['factor']) . ': ' : '') .
+            $s['label'] . ' ' . Money::format($s['price_cents']) . (!empty($s['on_request']) ? ' (auf Verlangen)' : '') .
+            (!empty($s['reason']) ? '; Begründung: ' . $s['reason'] : ''), $services);
         $text = 'Kartenzahlung – ' . Money::format($payment['amount_cents']) . "\n" . implode('; ', $lines) . "\n" .
             'Zahlung am ' . $paid->format('d.m.Y') . ' um ' . $paid->format('H:i') . ' Uhr über SumUp erfolgreich.' . "\n" . 'Transaktionsreferenz: ' . $payment['reference'];
+        if (!empty($payment['invoice_json'])) {
+            $invoice = json_decode($payment['invoice_json'], true, 32, JSON_THROW_ON_ERROR);
+            $text .= "\nRechnungsnummer (SumUp): " . ($payment['transaction_id'] ?? '') . "\nLeistungsdatum: " . $invoice['service_date'];
+        }
         return ['resourceType' => 'Observation',
             'meta' => ['profile' => ['https://fhir.t2med.de/StructureDefinition/FhirApiObservationFreitext|1.0.0']],
             'identifier' => [['system' => self::CONTEXT, 'value' => $visit['context_id']], ['system' => self::PAYMENT, 'value' => $payment['id']]],

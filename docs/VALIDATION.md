@@ -1,7 +1,33 @@
 # Prüfungen
 
-Stand: 17. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
+Stand: 19. September 2026. Die ursprünglichen Starter-/Installationsprüfungen
 vom 13. September sind unten gesondert aufgeführt.
+
+Version 1.4: `php tests/invoice.php` sowie die bisherigen Kern- und Abbruchprüfungen
+bestanden. Migration einer Datenbank mit Schema 3, Erhalt vorhandener Festpreise,
+GOÄ-Metadaten ohne Preisberechnung, zwei Kombinationen mit gemeinsamer Blutentnahme
+und zusätzlicher direkter Auswahl geprüft: genau drei Positionen, 14,49 EUR. Geprüft
+sind außerdem fallbezogene Begründungen, Gebührenrahmen, neutrale SumUp-Nutzdaten,
+fehlende Transaktions-ID, Zugriffsschutz, unveränderte Rechnungssnapshots nach
+Katalog-/Patientenänderung und Rechnungsnummer/GOÄ-Angaben im manuell erzeugten Akteneintrag.
+
+Lokale Rechnung nach PDF und 420-Punkte-Raster gerendert, auch mit langen Umlauten,
+Begründungen und XML-Sonderzeichen. PNG-Ansichten der PDFs visuell auf Lesbarkeit,
+Umbrüche, Betragsausrichtung und getrennten Zahlungsblock geprüft. Der Drucktest
+verwendet den echten Raster-/ESC/POS-Weg und eine simulierte Übergabe mit Schnitt.
+
+Im separaten Chrome-Testbrowser ausgeführt: Einzelleistungen mit GOÄ/Faktor anlegen
+und bearbeiten, zwei Kombinationen pflegen, gemeinsame Blutentnahme einmal abrechnen,
+Pflichtbegründung prüfen, Leistungsdatum wählen, Zahlung simulieren, PDF öffnen,
+Druck und E-Mail simulieren, anschließend bewusst in die Testakte dokumentieren.
+Desktop- und Mobilansicht visuell geprüft, keine JavaScript-Fehler. Keine echte
+Zahlung, kein Papierdruck, keine E-Mail und kein Schreibzugriff auf eine echte Akte
+während dieser Prüfungen.
+
+Installer-Praxisabfrage in temporären Verzeichnissen ausgeführt: gültige TOML mit
+Name, Anschrift und Kontakt; ein erneuter Durchlauf mit Enter erhält alle Werte.
+Zertifikat-/Dienstaufrufe dabei simuliert, die PHP-Konfigurationsprüfung tatsächlich
+ausgeführt. Der GitHub-Installationstest prüft zusätzlich die Praxisdaten im installierten System.
 
 Version 1.3: `php tests/reader-cancel.php` und die bestehenden PHP-Kernprüfungen
 bestanden. Mit simulierten SumUp-Antworten geprüft: anderer offener Vorgang,

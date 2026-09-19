@@ -49,3 +49,11 @@ enabled = false
 share = "//kienzlebox/TMm10"
 width_dots = 420
 cut = true
+
+# Lokaler Leistungsbeleg / GOÄ-Rechnung mit Zahlungsbestätigung.
+# Name und Anschrift ausfüllen; Bestandszahlungen behalten ihren bisherigen Beleg.
+[practice]
+name = ""
+street = ""
+city = ""
+contact = ""

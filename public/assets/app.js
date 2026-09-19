@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const euro = cents => new Intl.NumberFormat('de-DE', {style:'currency', currency:'EUR'}).format(cents / 100);
 let state = null, visitId = new URL(location.href).searchParams.get('v'), csrf = '', timer = null, busy = false;
 let selected = new Set(), retrySelection = false, startRequest = null;
+let selectedGroups = new Set(), reasons = {};
 let readerTimer = null, readerChecking = false, readerMessage = '';
 let receiptShare = null, receiptRecipient = null, receiptMailRequest = null;
 let receiptPrintPayment = null;
@@ -33,27 +34,81 @@ function manualCents() {
 }
 function updateTotal() {
   if (!state) return;
-  const sum = state.services.filter(s => selected.has(s.id)).reduce((total,s) => total+s.price_cents, 0) + manualCents();
+  const ids=selectedIds();
+  const sum = state.services.filter(s => ids.has(s.id)).reduce((total,s) => total+s.price_cents, 0) + manualCents();
   $('total').textContent = Number.isFinite(sum) ? euro(sum) : '—';
   $('pay').textContent = sum > 0 ? euro(sum) + ' mit Karte kassieren' : 'Mit Karte kassieren';
   $('pay').disabled = busy || !!state.reader_payment || !(sum > 0 && sum <= state.max_amount_cents);
 }
-function renderServices() {
-  $('services').replaceChildren(); $('manage-list').replaceChildren();
-  const active = new Set(state.services.map(s => s.id)); selected = new Set([...selected].filter(id => active.has(id)));
-  $('empty').hidden = state.services.length > 0;
-  for (const service of state.services) {
-    const label = element('label','','service'); const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(service.id);
-    checkbox.addEventListener('change', () => { checkbox.checked ? selected.add(service.id) : selected.delete(service.id); startRequest=null; updateTotal(); });
-    label.append(checkbox, element('span',service.label,'label'), element('span',euro(service.price_cents),'price')); $('services').append(label);
-    const row = element('div','','manage-row'); row.append(element('span', service.label+' · '+euro(service.price_cents)));
-    const edit = element('button','Bearbeiten','text-button'); edit.onclick=() => { $('service-id').value=service.id; $('service-label').value=service.label; $('service-price').value=(service.price_cents/100).toFixed(2).replace('.',','); $('service-save').textContent='Änderung speichern'; $('edit-reset').hidden=false; $('service-label').focus(); };
-    const del = element('button','Löschen','text-button danger'); del.onclick=() => run(async() => { if(!confirm('„'+service.label+'“ aus der Auswahl löschen? Frühere Zahlungen bleiben erhalten.')) return; await api('service_delete',{id:service.id}); resetForm(); await load(); });
-    row.append(edit,del); $('manage-list').append(row);
+function selectedIds() {
+  const ids=new Set(selected);
+  for(const group of state.groups) if(selectedGroups.has(group.id)) for(const id of group.services) ids.add(id);
+  return ids;
+}
+function serviceDescription(s) {
+  return s.goae_code ? 'GOÄ '+s.goae_code+' · Faktor '+s.factor.replace('.',',') : '';
+}
+function renderBasket() {
+  const ids=selectedIds(); $('basket-lines').replaceChildren(); $('basket').hidden=!ids.size;
+  for(const s of state.services.filter(s=>ids.has(s.id))) {
+    const row=element('div','','basket-line'), line=element('div','','position');
+    line.append(element('span',s.label),element('strong',euro(s.price_cents))); row.append(line);
+    if(s.goae_code) row.append(element('small',serviceDescription(s),'muted'));
+    const needsReason=s.goae_code && Math.round(Number(s.factor)*100)>state.fee_types[s.fee_type].threshold;
+    if(needsReason) {
+      const label=element('label','Begründung für diese Abrechnung (erforderlich)');
+      const input=document.createElement('textarea'); input.maxLength=800; input.required=true; input.value=reasons[s.id] || '';
+      input.oninput=()=>{reasons[s.id]=input.value;startRequest=null;}; label.append(input); row.append(label);
+    }
+    $('basket-lines').append(row);
   }
   updateTotal();
 }
-function resetForm() { $('service-form').reset(); $('service-id').value=''; $('service-save').textContent='Leistung hinzufügen'; $('edit-reset').hidden=true; }
+function renderServices() {
+  $('services').replaceChildren(); $('manage-list').replaceChildren(); $('groups').replaceChildren(); $('group-list').replaceChildren(); $('group-members').replaceChildren();
+  const active = new Set(state.services.map(s => s.id)); selected = new Set([...selected].filter(id => active.has(id)));
+  const activeGroups = new Set(state.groups.map(g=>g.id)); selectedGroups=new Set([...selectedGroups].filter(id=>activeGroups.has(id)));
+  $('groups-section').hidden=!state.groups.length;
+  $('empty').hidden = state.services.length > 0;
+  for (const service of state.services) {
+    const label = element('label','','service'); const checkbox = document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selected.has(service.id);
+    checkbox.addEventListener('change', () => { checkbox.checked ? selected.add(service.id) : selected.delete(service.id); startRequest=null; renderBasket(); });
+    const name=element('span',service.label,'label'); if(service.goae_code) name.append(element('small',serviceDescription(service),'muted'));
+    label.append(checkbox, name, element('span',euro(service.price_cents),'price')); $('services').append(label);
+    const row = element('div','','manage-row'); row.append(element('span', service.label+' · '+euro(service.price_cents)+(service.goae_code?' · '+serviceDescription(service):'')));
+    const edit = element('button','Bearbeiten','text-button'); edit.onclick=() => {
+      $('service-id').value=service.id; $('service-label').value=service.label; $('service-price').value=(service.price_cents/100).toFixed(2).replace('.',',');
+      $('service-goae').value=service.goae_code; $('service-factor').value=(service.factor || '2.3').replace('.',','); $('service-fee-type').value=service.fee_type;
+      $('service-on-request').checked=!!service.on_request; $('goae-fields').open=!!service.goae_code;
+      $('service-save').textContent='Änderung speichern'; $('edit-reset').hidden=false; $('service-label').focus();
+    };
+    const del = element('button','Löschen','text-button danger'); del.onclick=() => run(async() => { if(!confirm('„'+service.label+'“ aus der Auswahl löschen? Frühere Zahlungen bleiben erhalten.')) return; await api('service_delete',{id:service.id}); resetForm(); await load(); });
+    row.append(edit,del); $('manage-list').append(row);
+    const member=element('label','','service'), memberCheck=document.createElement('input'); memberCheck.type='checkbox'; memberCheck.value=service.id;
+    member.append(memberCheck,element('span',service.label,'label'),element('span',euro(service.price_cents),'price')); $('group-members').append(member);
+  }
+  for(const group of state.groups) {
+    const sum=state.services.filter(s=>group.services.includes(s.id)).reduce((total,s)=>total+s.price_cents,0);
+    const label=element('label','','service'), checkbox=document.createElement('input'); checkbox.type='checkbox'; checkbox.checked=selectedGroups.has(group.id);
+    checkbox.onchange=()=>{checkbox.checked?selectedGroups.add(group.id):selectedGroups.delete(group.id);startRequest=null;renderBasket();};
+    const name=element('span',group.label,'label'); name.append(element('small',state.services.filter(s=>group.services.includes(s.id)).map(s=>s.label).join(', '),'muted'));
+    label.append(checkbox,name,element('span',euro(sum),'price')); $('groups').append(label);
+    const row=element('div','','manage-row'); row.append(element('span',group.label+' · '+euro(sum)));
+    const edit=element('button','Bearbeiten','text-button'); edit.onclick=()=>{
+      $('group-id').value=group.id; $('group-label').value=group.label;
+      $('group-members').querySelectorAll('input').forEach(el=>el.checked=group.services.includes(el.value));
+      $('group-save').textContent='Kombination speichern'; $('group-reset').hidden=false; $('group-label').focus();
+    };
+    const del=element('button','Löschen','text-button danger'); del.onclick=()=>run(async()=>{
+      if(!confirm('Kombination „'+group.label+'“ löschen? Die Einzelleistungen bleiben erhalten.')) return;
+      await api('group_delete',{id:group.id}); resetGroup(); await load();
+    });
+    row.append(edit,del); $('group-list').append(row);
+  }
+  renderBasket();
+}
+function resetForm() { $('service-form').reset(); $('service-id').value=''; $('goae-fields').open=false; $('service-save').textContent='Leistung hinzufügen'; $('edit-reset').hidden=true; }
+function resetGroup() { $('group-form').reset(); $('group-id').value=''; $('group-save').textContent='Kombination hinzufügen'; $('group-reset').hidden=true; }
 function manage(show) { $('manager').hidden=!show; $('manage-toggle').setAttribute('aria-expanded',String(show)); if(show) $('manager').scrollIntoView({behavior:'smooth',block:'nearest'}); }
 function renderReader() {
   clearTimeout(readerTimer);
@@ -84,6 +139,7 @@ async function pollReader() {
 function renderPayment() {
   const p = state.payment; const showing = p && !retrySelection;
   $('selection').hidden=!!showing; $('payment').hidden=!showing;
+  $('receipt-data-note').hidden=!showing || p.payment_status!=='successful' || !p.local_receipt;
   renderReader();
   if (showing) manage(false);
   for (const id of ['document','receipt','receipt-mail','receipt-print','receipt-share','retry','cancel','mock-controls','mock-fhir-label']) $(id).hidden=true;
@@ -95,10 +151,11 @@ function renderPayment() {
   clearTimeout(timer);
   if (!showing) return;
   $('receipt').hidden=p.payment_status!=='successful';
+  $('receipt').textContent=p.local_receipt ? 'Rechnung / Leistungsbeleg als PDF' : 'Zahlungsbeleg / PDF';
   $('receipt-share').hidden=p.payment_status!=='successful';
   $('receipt-print').hidden=p.payment_status!=='successful' || !state.printing_enabled;
   if(p.payment_status==='successful') renderReceiptMail();
-  $('payment-amount').textContent=euro(p.amount_cents); $('payment-reference').textContent=p.reference;
+  $('payment-amount').textContent=euro(p.amount_cents); $('payment-reference').textContent=p.invoice_number ? 'Rechnungsnummer: '+p.invoice_number : p.reference;
   $('payment-error').textContent=p.error_message; $('payment-error').hidden=!p.error_message;
   let title, description, symbol='…';
   if(p.doc_status==='written') {
@@ -128,6 +185,9 @@ async function load() {
   $('mode').textContent=state.mock?'TESTMODUS':state.fhir_mock?'T2MED TESTMODUS':'';
   $('patient-name').textContent=state.patient.name;
   $('patient-birth').textContent=state.patient.birthdate ? 'Geboren am '+state.patient.birthdate.split('-').reverse().join('.') : '';
+  $('practice-hint').hidden=state.local_receipts;
+  if(!$('service-date').value) $('service-date').value=state.today;
+  $('service-date').max=state.today;
   renderServices(); renderPayment();
 }
 async function poll() {
@@ -136,12 +196,25 @@ async function poll() {
   catch(e) { message(e.message); timer=setTimeout(poll,5000); }
 }
 $('manual').addEventListener('input',()=>{ startRequest=null; updateTotal(); });
+$('service-date').oninput=()=>{startRequest=null;};
 $('manage-toggle').onclick=()=>manage($('manager').hidden);
 $('manage-close').onclick=()=>manage(false);
 $('edit-reset').onclick=resetForm;
-$('service-form').onsubmit=e=>{ e.preventDefault(); run(async()=>{ await api('service_save',{id:$('service-id').value,label:$('service-label').value,price:$('service-price').value}); resetForm(); await load(); }); };
+$('service-fee-type').onchange=()=>{
+  const fee=state.fee_types[$('service-fee-type').value];
+  if(Number($('service-factor').value.replace(',','.'))*100>fee.max) $('service-factor').value=String(fee.threshold/100).replace('.',',');
+};
+$('service-form').onsubmit=e=>{ e.preventDefault(); run(async()=>{ await api('service_save',{id:$('service-id').value,label:$('service-label').value,price:$('service-price').value,goae_code:$('service-goae').value,factor:$('service-factor').value,fee_type:$('service-fee-type').value,on_request:$('service-on-request').checked}); resetForm(); await load(); }); };
+$('group-reset').onclick=resetGroup;
+$('group-form').onsubmit=e=>{e.preventDefault();run(async()=>{
+  await api('group_save',{id:$('group-id').value,label:$('group-label').value,services:[...$('group-members').querySelectorAll('input:checked')].map(el=>el.value)});
+  resetGroup(); await load();
+});};
 $('pay').onclick=()=>run(async()=>{
-  const data={services:[...selected].sort(),manual_amount:$('manual').value.trim()};
+  if(!$('service-date').reportValidity()) return;
+  for(const input of $('basket').querySelectorAll('textarea')) if(!input.reportValidity()) return;
+  const ids=selectedIds();
+  const data={services:[...selected].sort(),groups:[...selectedGroups].sort(),reasons:Object.fromEntries(Object.entries(reasons).filter(([id,value])=>ids.has(id) && value.trim())),service_date:$('service-date').value,manual_amount:$('manual').value.trim()};
   // Schlüssel und Anfrage vor dem Netzaufruf speichern; bei verlorener Antwort wiederverwenden.
   if(!startRequest) startRequest={...data,request_id:crypto.randomUUID()};
   sessionStorage.setItem('ks-start-'+visitId,JSON.stringify(startRequest));
@@ -266,7 +339,7 @@ async function init() {
   }
   if(visitId) {
     const saved=sessionStorage.getItem('ks-start-'+visitId);
-    if(saved) { try { startRequest=JSON.parse(saved); selected=new Set(startRequest.services); $('manual').value=startRequest.manual_amount; } catch { sessionStorage.removeItem('ks-start-'+visitId); } }
+    if(saved) { try { startRequest=JSON.parse(saved); selected=new Set(startRequest.services); selectedGroups=new Set(startRequest.groups || []); reasons=startRequest.reasons || {}; $('service-date').value=startRequest.service_date || ''; $('manual').value=startRequest.manual_amount; } catch { sessionStorage.removeItem('ks-start-'+visitId); } }
     await load();
   } else if(['localhost','127.0.0.1'].includes(location.hostname)) $('demo').hidden=false;
 }

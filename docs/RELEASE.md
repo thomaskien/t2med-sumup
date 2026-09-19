@@ -1,15 +1,17 @@
-Version 1.3 der Kartenzahlungsseite für T2med und SumUp Solo.
+Version 1.4 der Kartenzahlungsseite für T2med und SumUp Solo.
 
-- Bei belegtem Terminal erscheint **Anderen Vorgang abbrechen** direkt in der
-  Leistungsauswahl, zusammen mit Betrag, neutraler Referenz und **Status prüfen**.
-- Der Zahlungsstatus wird vor dem Abbruch frisch abgeglichen. Eine bereits erfolgreiche
-  Zahlung bleibt erhalten und wird weiterhin im ursprünglichen Vorgang dokumentiert.
-- Nach der bestätigten Beendigung ist der Knopf zum Kassieren wieder verfügbar.
-  Leistungsauswahl und Betrag bleiben erhalten; die neue Zahlung startet erst beim Klick.
-- Ein angenommener Abbruchauftrag allein gibt das Terminal noch nicht frei. Die offene
-  Seite prüft den Status weiter; ein erneuter Abbruchversuch ist möglich. Ein veralteter
-  Klick kann keinen inzwischen neu gestarteten Vorgang abbrechen.
-- Starter und Download-URLs gemeinsam auf Version 1.3 angehoben.
+- Einzelleistungen mit frei festgelegtem Preis sowie optionaler GOÄ-Ziffer und
+  Steigerungsfaktor direkt auf der Webseite pflegen. Der Faktor verändert den Preis nicht.
+- Kombinationen aus vorhandenen Leistungen anlegen und auswählen. Gemeinsame Positionen
+  wie eine Blutentnahme werden auch über mehrere Kombinationen hinweg nur einmal berechnet.
+- Lokaler Leistungsbeleg bzw. GOÄ-Rechnung mit Praxis- und Patientendaten, Leistungsdatum,
+  Positionen, Faktoren, Begründungen und Gesamtsumme. Darunter die SumUp-Zahlungsbestätigung.
+- Als Rechnungsnummer dient die SumUp-Transaktions-ID. Sie erscheint auch im manuellen
+  Akteneintrag. Medizinische Leistungsdaten bleiben bei der Zahlungsabwicklung lokal.
+- PDF, E-Mail-Anhang und optionaler 58-mm-Direktdruck verwenden denselben lokalen Beleg.
+  Belegdaten werden beim Zahlungsstart fest gespeichert und durch spätere Änderungen
+  nicht verändert. Bestehende Zahlungen behalten ihren bisherigen Beleg.
+- Installer und TOML enthalten die Praxisdaten. Starter und Download-URLs auf Version 1.4.
 
 Update auf dem Anwendungsserver:
 
@@ -18,8 +20,10 @@ git pull --ff-only
 sudo bash scripts/install-server.sh
 ```
 
-Bestehende Konfiguration und Zahlungen bleiben erhalten. Es sind keine neuen
-TOML-Einstellungen nötig. Anschließend die Zahlungsseite neu laden.
+Im Installer **Praxis / Rechnungsaussteller**, Straße und Hausnummer sowie PLZ und Ort
+angeben. Der Kontakt ist optional. Die gleichen Felder stehen unter `[practice]` in
+`/etc/kienzle-sumup/kienzle-sumup.toml`. Danach die Zahlungsseite neu laden.
 
-Die Binärdateien sind Starter und benötigen die vom Server-Installer erstellte
-`client.json`. Hinweise zur Einrichtung stehen in der README.
+Bestehende Einstellungen, Leistungen und Zahlungen werden erhalten. Der Installer
+aktualisiert die Datenbank. Die Binärdateien sind Starter und benötigen die vom
+Server-Installer erstellte `client.json`.

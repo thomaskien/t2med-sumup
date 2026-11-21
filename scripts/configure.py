@@ -19,7 +19,14 @@ SOURCE = Path(__file__).resolve().parent.parent
 T2MED_DEMO_API_KEY = '7QwA7931lJSQfMKuTH4MQXLn4YEiNhE5tggnYKlY4HE'
 
 
+# Standard: keine Fragen. Vorhandene Werte bleiben, sonst sichere Vorgaben (Testmodus, Zusatzfunktionen aus).
+# Alles Weitere stellt die Praxis im Browser unter /settings.php ein. Mit --fragen fragt der Installer wie früher.
+INTERACTIVE = '--fragen' in sys.argv
+
+
 def ask(label, default='', secret=False):
+    if not INTERACTIVE:
+        return default
     suffix = ' [vorhandenen Wert behalten]' if secret and default else (f' [{default}]' if default else '')
     value = (getpass.getpass if secret else input)(label + suffix + ': ').strip()
     return value or default
@@ -34,6 +41,16 @@ def write_private(path, text, mode=0o600):
     os.replace(temp, path)
 
 
+def port_free(port):
+    """True, wenn kein Programm auf dem Port lauscht. SO_REUSEADDR: kürzlich geschlossene Verbindungen (TIME_WAIT)
+    – z. B. vom Browser der Aktualisierungsseite – dürfen die Prüfung nicht fälschlich scheitern lassen."""
+    with socket.socket() as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try: probe.bind(('0.0.0.0', port))
+        except OSError: return False
+    return True
+
+
 def main():
     os.umask(0o077)
     ROOT.mkdir(parents=True, exist_ok=True)
@@ -45,7 +62,7 @@ def main():
             raise ValueError('Vorhandene Konfiguration ungültig. Bitte zuerst korrigieren; sie wird nicht überschrieben.')
         old = json.loads(result.stdout)
     get = lambda s,k,d='': old.get(s, {}).get(k,d)
-    print('Kienzle-SumUp · Servereinrichtung (Enter übernimmt Vorgaben)')
+    print('Kienzle-SumUp · Servereinrichtung (Enter übernimmt Vorgaben)' if INTERACTIVE else 'Kienzle-SumUp · Servereinrichtung ohne Fragen (Einstellungen danach im Browser)')
     base = ask('HTTPS-Adresse ohne Port, z. B. https://praxisserver', get('app','base_url','https://'+socket.gethostname()).rsplit(':',1)[0] if get('app','base_url') else 'https://'+socket.gethostname())
     parsed = urlsplit(base)
     if parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password or parsed.path not in ('','/') or parsed.query or parsed.fragment:
@@ -56,9 +73,7 @@ def main():
     # Bei Updates kann der eigene Dienst bereits auf dem gewünschten Port laufen.
     own_active = subprocess.run(['systemctl','is-active','--quiet','kienzle-sumup-apache.service']).returncode == 0
     if not (own_active and port == get('app','port')):
-        with socket.socket() as probe:
-            try: probe.bind(('0.0.0.0',port))
-            except OSError: raise ValueError(f'Port {port} ist bereits belegt.')
+        if not port_free(port): raise ValueError(f'Port {port} ist bereits belegt.')
     base = f'https://{parsed.hostname}:{port}'
     mode = ask('Betrieb: mock oder live', get('sumup','mode','mock'))
     if mode not in ('mock','live'): raise ValueError('Bitte mock oder live wählen.')
@@ -109,17 +124,40 @@ def main():
         mail['from_address'] = ask('Absender-E-Mail-Adresse',mail['from_address'])
         mail['from_name'] = ask('Absendername / Praxisname',mail['from_name'])
     config['mail'] = mail
-    printing = {key:get('printing',key,default) for key,default in {'enabled':False,'share':'//kienzlebox/TMm10','width_dots':420,'cut':True}.items()}
-    answer = ask('Direktdruck auf Epson TM-m10 über Samba aktivieren (ja/nein)', 'ja' if printing['enabled'] else 'nein')
+    printing = {key:get('printing',key,default) for key,default in {'enabled':False,'model':'tm-m10','transport':'samba','share':'//kienzlebox/TMm10','cups_server':'','queue':'TMm10','width_dots':None,'cut':True}.items()}
+    answer = ask('Direktdruck auf einen Epson-Bondrucker aktivieren (ja/nein)', 'ja' if printing['enabled'] else 'nein')
     if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
     printing['enabled'] = answer == 'ja'
     if printing['enabled']:
-        printing['share'] = ask('Samba-Druckerfreigabe (Gastzugriff ohne Passwort)',printing['share']).replace('\\','/')
-        printing['width_dots'] = int(ask('Druckbreite in Punkten (TM-m10 mit 58 mm: 420)',str(printing['width_dots'])))
+        printing['model'] = ask('Bondrucker: tm-m10 (58 mm) oder tm-m30iii (80 mm)',printing['model']).lower().replace('-iii','iii')
+        if printing['model'] not in ('tm-m10','tm-m30iii'): raise ValueError('Bitte tm-m10 oder tm-m30iii eingeben.')
+        printing['transport'] = ask('Verbindung: samba (Freigabe auf dem Druckserver) oder cups (RAW-Warteschlange, z. B. TM-m30III per LAN)',printing['transport'])
+        if printing['transport'] not in ('samba','cups'): raise ValueError('Bitte samba oder cups eingeben.')
+        if printing['transport'] == 'samba':
+            printing['share'] = ask('Samba-Druckerfreigabe (Gastzugriff ohne Passwort)',printing['share']).replace('\\','/')
+        else:
+            printing['queue'] = ask('Name der CUPS-RAW-Warteschlange',printing['queue'])
+            printing['cups_server'] = ask('CUPS-Server (leer: dieser Rechner, sonst host:631)',printing['cups_server'])
+        default_width = 576 if printing['model'] == 'tm-m30iii' else 420
+        # Standardbreite des gewählten Modells vorschlagen; eigene Werte bleiben erhalten.
+        if printing['width_dots'] in (None, 420, 576) or printing['width_dots'] > default_width: printing['width_dots'] = default_width
+        printing['width_dots'] = int(ask('Druckbreite in Punkten (TM-m10/58 mm: 420, TM-m30III/80 mm: 576)',str(printing['width_dots'])))
         answer = ask('Bon nach dem Drucken schneiden (ja/nein)', 'ja' if printing['cut'] else 'nein')
         if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
         printing['cut'] = answer == 'ja'
+    if printing['width_dots'] is None: printing.pop('width_dots')
     config['printing'] = printing
+    office = {key:get('office_printing',key,default) for key,default in {'enabled':False,'cups_server':'','queue':'Praxisdrucker','media':'A4','duplex':False}.items()}
+    answer = ask('Normalen Praxisdrucker (A4) für Rechnungen über CUPS einrichten (ja/nein)', 'ja' if office['enabled'] else 'nein')
+    if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+    office['enabled'] = answer == 'ja'
+    if office['enabled']:
+        office['queue'] = ask('Name der CUPS-Warteschlange des Praxisdruckers (lpstat -p zeigt alle)',office['queue'])
+        office['cups_server'] = ask('CUPS-Server (leer: dieser Rechner, sonst z. B. kienzlebox:631)',office['cups_server'])
+        answer = ask('Beidseitig drucken (ja/nein)', 'ja' if office['duplex'] else 'nein')
+        if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+        office['duplex'] = answer == 'ja'
+    config['office_printing'] = office
     print('Praxisdaten für lokale Leistungsbelege / GOÄ-Rechnungen (Name und Anschrift erforderlich).')
     practice = {}
     for key, label in [('name','Praxis / Rechnungsaussteller'),('street','Straße und Hausnummer'),('city','PLZ und Ort'),('contact','Kontakt auf dem Beleg (optional)')]:
@@ -128,6 +166,34 @@ def main():
     if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
     practice['append_sumup_receipt'] = answer == 'ja'
     config['practice'] = practice
+    inbox = {'enabled':get('invoice_inbox','enabled',False),'key':get('invoice_inbox','key',''),'max_age_days':get('invoice_inbox','max_age_days',14)}
+    answer = ask('T2med-Rechnungen über virtuellen Drucker „SumUp-Rechnung“ übernehmen (ja/nein)', 'ja' if inbox['enabled'] else 'nein')
+    if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+    inbox['enabled'] = answer == 'ja'
+    if inbox['enabled'] and not inbox['key']: inbox['key'] = secrets.token_hex(32)
+    config['invoice_inbox'] = inbox
+    export = {key:get('invoice_export',key,default) for key,default in {'enabled':False,'share':'//nas/steuerberater','directory':'Rechnungen/{jahr}/{monat}','username':'','password':'','domain':'','when':'paid','app_invoices':False}.items()}
+    answer = ask('Rechnungen als PDF zusätzlich in einen Netzwerkordner kopieren, z. B. für die Steuerberatung (ja/nein)', 'ja' if export['enabled'] else 'nein')
+    if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+    export['enabled'] = answer == 'ja'
+    if export['enabled']:
+        answer = ask('In dieser App erzeugte Rechnungen/Leistungsbelege nach erfolgreicher Zahlung ablegen (ja/nein)', 'ja' if export['app_invoices'] or not inbox['enabled'] else 'nein')
+        if answer not in ('ja','nein'): raise ValueError('Bitte ja oder nein eingeben.')
+        export['app_invoices'] = answer == 'ja'
+        if not export['app_invoices'] and not inbox['enabled']:
+            print('Ohne Rechnungseingang und ohne App-Rechnungen gibt es nichts abzulegen; Ablage bleibt aus.'); export['enabled'] = False
+        elif export['app_invoices'] and not (practice.get('name') and practice.get('street') and practice.get('city')):
+            print('Hinweis: App-Rechnungen entstehen erst, wenn Praxisname, Straße und Ort eingetragen sind.')
+    if export['enabled']:
+        export['share'] = ask('Netzwerkfreigabe (SMB), z. B. //nas/steuerberater',export['share']).replace('\\','/')
+        export['directory'] = ask('Unterordner ({jahr} und {monat} werden ersetzt, leer: direkt in die Freigabe)',export['directory'])
+        export['username'] = ask('Benutzername für die Freigabe (leer: Gastzugriff)',export['username'])
+        export['password'] = ask('Passwort für die Freigabe',export['password'],True) if export['username'] else ''
+        export['domain'] = ask('Domäne/Arbeitsgruppe (optional)',export['domain']) if export['username'] else ''
+        if inbox['enabled']:
+            export['when'] = ask('Welche T2med-Rechnungen ablegen: paid (nur per Karte bezahlte) oder received (jede gedruckte)',export['when'])
+            if export['when'] not in ('paid','received'): raise ValueError('Bitte paid oder received eingeben.')
+    config['invoice_export'] = export
     text = '# Kienzle-SumUp · Zugangsdaten nicht weitergeben.\n'
     for section, values in config.items():
         text += '\n['+section+']\n'
@@ -165,6 +231,12 @@ def main():
     client={'server_url':base,'launcher_key':config['app']['launcher_key'],'certificate_sha256':hashlib.sha256(der).hexdigest()}
     write_private(setup/'client.json',json.dumps(client,indent=2)+'\n')
     write_private(setup/'server.crt',cert.read_text(),0o644)
+    if inbox['enabled']:
+        # Getrennt von den Arbeitsplatzdaten: nur für den Druckserver bestimmt.
+        printer=Path('/root/kienzle-sumup-printer');printer.mkdir(mode=0o700,exist_ok=True)
+        write_private(printer/'invoice-printer.json',json.dumps({'server_url':base,'inbox_key':inbox['key']},indent=2)+'\n')
+        write_private(printer/'server.crt',cert.read_text(),0o644)
+        print('Druckserver-Einrichtung für „SumUp-Rechnung“: /root/kienzle-sumup-printer')
     print('Konfiguration und Client-Einrichtungsdaten gespeichert. Keine Schlüssel werden ausgegeben.')
 
 

@@ -13,11 +13,27 @@ final class SumUpClient {
     private function readerPath(array $payment): string {
         return '/v0.1/merchants/' . rawurlencode($this->config->get('sumup', 'merchant_code')) . '/readers/' . rawurlencode($payment['reader_id']);
     }
+    /** Verbindungstest für die Einstellungsseite: Zugangsdaten gültig und Solo gekoppelt? */
+    public function check(): string {
+        if ($this->config->get('sumup', 'mode') === 'mock') return 'Testmodus: keine Verbindung zu SumUp nötig.';
+        $response = $this->request('GET', '/v0.1/merchants/' . rawurlencode($this->config->get('sumup', 'merchant_code')) . '/readers');
+        if ($response['status'] === 401 || $response['status'] === 403) throw new Problem('SumUp lehnt den API-Key oder Händlercode ab.', 502);
+        if ($response['status'] !== 200) throw new Problem('SumUp antwortet mit HTTP ' . $response['status'] . '.', 502);
+        $readers = $response['body']['items'] ?? $response['body'];
+        foreach (is_array($readers) ? $readers : [] as $reader) {
+            if (($reader['id'] ?? '') === $this->config->get('sumup', 'reader_id')) {
+                return 'Verbunden. Solo „' . ($reader['name'] ?? $reader['id']) . '“ gefunden' . (isset($reader['status']) ? ' (Status: ' . $reader['status'] . ')' : '') . '.';
+            }
+        }
+        throw new Problem('Zugang gültig, aber die Reader-ID ist bei diesem Händlerkonto nicht gekoppelt.', 502);
+    }
     public function start(array $payment): array {
         if ($this->config->get('sumup', 'mode') === 'mock') return ['checkout_id' => 'mock-' . $payment['id'], 'client_transaction_id' => 'mock-' . $payment['id']];
         $response = $this->request('POST', $this->readerPath($payment) . '/checkout', [
             'total_amount' => ['currency' => 'EUR', 'minor_unit' => 2, 'value' => $payment['amount_cents']],
-            'description' => $payment['reference'],
+            // Bei T2med-Rechnungen erscheint die Rechnungsnummer in den SumUp-Umsätzen.
+            // Keine Patientendaten; Abgleich weiterhin über die neutrale Referenz.
+            'description' => !empty($payment['t2med_invoice']) ? 'Rechnung ' . $payment['t2med_invoice'] : $payment['reference'],
             'affiliate' => ['app_id' => $this->config->get('sumup', 'app_id'),
                 'key' => $this->config->get('sumup', 'affiliate_key'), 'foreign_transaction_id' => $payment['reference']],
         ]);

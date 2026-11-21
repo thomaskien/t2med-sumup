@@ -20,15 +20,39 @@ jobs:
         with:
           go-version: '1.23.x'
           cache: false
-      - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin libphp-phpmailer fonts-dejavu-core
+      - run: sudo apt-get update && sudo apt-get install -y librsvg2-bin libphp-phpmailer fonts-dejavu-core poppler-utils
       - run: php tests/critical.php
       - run: php tests/reader-cancel.php
       - run: php tests/invoice.php
+      - run: php tests/t2med-invoice.php
+      - run: php tests/letterxpress.php
+      - run: php tests/auto-print.php
+      - run: php tests/settings.php
+      - run: php tests/printer-admin.php
+      - name: Terminzettel (Python)
+        run: |
+          sudo apt-get install -y ghostscript libgxps-utils tesseract-ocr tesseract-ocr-deu python3-pil python3-qrcode fonts-dejavu-core
+          python3 -m pip install --user --break-system-packages -r terminzettel/requirements-dev.txt
+          python3 -B -m unittest discover -s terminzettel/tests -v
+      - run: php tests/terminzettel.php
+      - run: python3 -m pip install --user --break-system-packages openpyxl && php tests/tax.php
+      - run: php tests/goae-t2med.php
+      - run: php tests/cash.php
+      - run: php tests/updater.php
+      - run: php tests/security.php
+      - run: php tests/firewall.php
+      - run: python3 tests/configure-port.py
+      - run: bash tests/firewall-apply.sh
+      - run: sudo bash tests/self-update.sh
       - run: php tests/print-format.php
       - run: php tests/mail-mime.php
       - run: python3 tests/tls-pin.py
+      - run: python3 -m py_compile scripts/invoice-printer/kienzle-sumup-backend.py
+      - run: python3 -B tests/invoice-backend.py
+      - run: php -l scripts/export-invoices.php
       - run: find src public scripts -name '*.php' -exec php -l {} \;
-      - run: bash -n scripts/install-server.sh client/install-linux.sh client/install-macos.command
+      - run: bash -n scripts/self-update.sh tests/self-update.sh
+      - run: bash -n scripts/install-server.sh scripts/install-invoice-printer.sh client/install-linux.sh client/install-macos.command
       - run: cd client && go test ./...
       - run: bash scripts/build-client.sh
       - uses: actions/upload-artifact@v4
@@ -39,14 +63,66 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Install isolated server in mock mode with optional printing
-        run: printf '\n\n\n\n\nja\n\n\n\nTestpraxis\nMusterstrasse 1\n12345 Musterstadt\n\nja\n' | sudo bash scripts/install-server.sh
+      - name: Install isolated server in mock mode with optional printing and invoice inbox
+        run: printf '\n\n\n\n\nja\n\n\n\n\n\n\nTestpraxis\nMusterstrasse 1\n12345 Musterstadt\n\nja\nja\nnein\n' | sudo bash scripts/install-server.sh --fragen
       - name: Check HTTPS and PHP
         run: |
           sudo systemctl is-active kienzle-sumup-apache kienzle-sumup-php
           php -r 'exit(extension_loaded("gd") && is_executable("/usr/bin/smbclient") ? 0 : 1);'
           sudo php -r 'require "/opt/kienzle-sumup/src/bootstrap.php"; $c=ks_app()->config; exit($c->practiceReady() && $c->get("practice", "append_sumup_receipt") === true ? 0 : 1);'
           sudo curl --fail --silent --show-error --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$(hostname):7868:127.0.0.1" "https://$(hostname):7868/" | grep -q 'Kartenzahlung'
+          sudo test -s /root/kienzle-sumup-printer/invoice-printer.json
+          key=$(sudo python3 -c 'import json;print(json.load(open("/root/kienzle-sumup-printer/invoice-printer.json"))["inbox_key"])')
+          # Gültiger Schlüssel, aber kein PDF: 415 beweist Erreichbarkeit, Größenlimit und Autorisierung.
+          code=$(sudo curl --silent --output /dev/null --write-out '%{http_code}' --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$(hostname):7868:127.0.0.1" -H "Authorization: Bearer $key" -H 'Content-Type: text/plain' --data check "https://$(hostname):7868/invoice-inbox.php")
+          test "$code" = 415
+          code=$(sudo curl --silent --output /dev/null --write-out '%{http_code}' --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$(hostname):7868:127.0.0.1" -H 'Authorization: Bearer falsch' -H 'Content-Type: application/pdf' --data x "https://$(hostname):7868/invoice-inbox.php")
+          test "$code" = 401
+      - name: Update without questions and settings page
+        run: |
+          sudo bash scripts/install-server.sh --admin-reset < /dev/null | tee /tmp/update.log
+          sudo php -r 'require "/opt/kienzle-sumup/src/bootstrap.php"; exit(ks_app()->config->practiceReady() ? 0 : 1);'
+          url=$(grep -o 'https://[^ ]*/settings.php#setup=[0-9a-f]*' /tmp/update.log)
+          token=${url##*#setup=}
+          host="$(hostname):7868"
+          c=(--fail --silent --show-error --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$host:127.0.0.1" -H 'Content-Type: application/json')
+          curl "${c[@]}" "https://$host/settings.php" | grep -q 'Einstellungen'
+          curl "${c[@]}" -c /tmp/jar -d "{\"action\":\"setup\",\"token\":\"$token\",\"password\":\"ci-passwort-123\"}" "https://$host/settings-api.php" > /tmp/setup.json
+          csrf=$(python3 -c 'import json;print(json.load(open("/tmp/setup.json"))["csrf"])')
+          curl "${c[@]}" -b /tmp/jar -H "X-CSRF-Token: $csrf" -d '{"action":"save","section":"office_printing","values":{"enabled":true,"queue":"CI-Drucker","cups_server":"","media":"A4","duplex":false}}' "https://$host/settings-api.php" | grep -q 'Gespeichert'
+          sudo php -r 'require "/opt/kienzle-sumup/src/bootstrap.php"; exit(ks_app()->config->get("office_printing","queue") === "CI-Drucker" ? 0 : 1);'
+          # Ohne Anmeldung kein Zugriff
+          code=$(curl --silent --output /dev/null --write-out '%{http_code}' --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$host:127.0.0.1" -H 'Content-Type: application/json' -d '{"action":"get"}' "https://$host/settings-api.php")
+          test "$code" = 401
+          # Drucker im Browser: echte CUPS-Warteschlange über die Gruppe lpadmin anlegen und wieder entfernen.
+          curl "${c[@]}" -b /tmp/jar -H "X-CSRF-Token: $csrf" -d '{"action":"printer_add","kind":"tm-m30iii","name":"CI-Bon","address":"socket://127.0.0.1:9100"}' "https://$host/settings-api.php" | grep -q 'eingerichtet'
+          lpstat -v CI-Bon | grep -q 'socket://127.0.0.1:9100'
+          sudo php -r 'require "/opt/kienzle-sumup/src/bootstrap.php"; $c=ks_app()->config; exit($c->get("printing","queue") === "CI-Bon" && $c->get("printing","width_dots") === 576 ? 0 : 1);'
+          curl "${c[@]}" -b /tmp/jar -H "X-CSRF-Token: $csrf" -d '{"action":"printer_remove","name":"CI-Bon"}' "https://$host/settings-api.php" | grep -q 'entfernt'
+          ! lpstat -v CI-Bon 2>/dev/null
+          # Drucker „SumUp-Rechnung“ ohne sudo: Einschalten im Browser legt ihn an, Ausschalten entfernt ihn.
+          curl "${c[@]}" -b /tmp/jar -H "X-CSRF-Token: $csrf" -d '{"action":"save","section":"invoice_inbox","values":{"enabled":true}}' "https://$host/settings-api.php" | grep -q 'ist eingerichtet'
+          lpstat -v SumUp-Rechnung | grep -q 'kienzle-sumup:/'
+          sudo test -s /etc/kienzle-sumup-printer/web/printer.json
+          # Aktualisierungsdienst eingerichtet, Quelle aus dem Git-Checkout übernommen.
+          systemctl is-enabled kienzle-sumup-update.path
+          sudo grep -q "^repo=${GITHUB_REPOSITORY}$" /etc/kienzle-sumup/update.conf
+          curl "${c[@]}" -b /tmp/jar -d '{"action":"update_status"}' "https://$host/settings-api.php" | grep -q '"state"'
+          # Terminzettel: virtueller Drucker vorhanden, Layout und Bondrucker kommen aus dem Webinterface.
+          lpstat -v Terminzettel | grep -q 'terminzettel:/'
+          curl "${c[@]}" -b /tmp/jar -H "X-CSRF-Token: $csrf" -d '{"action":"printer_add","kind":"tm-m30iii","name":"CI-Bon2","address":"socket://127.0.0.1:9100"}' "https://$host/settings-api.php" | grep -q 'eingerichtet'
+          sudo grep -q '"queue": "CI-Bon2"' /etc/terminzettel/web/layout.json
+          curl "${c[@]}" -b /tmp/jar -H "X-CSRF-Token: $csrf" -d '{"action":"save","section":"terminzettel","values":{"enabled":true,"appointment_size":"1x2","qr_position":"below"}}' "https://$host/settings-api.php" | grep -q 'Gespeichert'
+          sudo grep -q '"position": "below"' /etc/terminzettel/web/layout.json
+          curl "${c[@]}" -b /tmp/jar -H "X-CSRF-Token: $csrf" -d '{"action":"terminzettel_preview","values":{"appointment_size":"3x3"}}' "https://$host/settings-api.php" | grep -q 'data:image/png;base64'
+          # Selbsttest des installierten Terminzettels als Dienstbenutzer.
+          sudo -u terminzettel python3 -B /usr/local/lib/terminzettel/terminzettel.py --self-test
+          # Arbeitsplatz-Paket nur mit Anmeldung
+          curl --fail --silent --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$host:127.0.0.1" -b /tmp/jar -o /tmp/win.zip "https://$host/client-download.php?os=windows"
+          unzip -l /tmp/win.zip | grep -q install-windows.cmd
+          unzip -l /tmp/win.zip | grep -q 'kienzle-sumup-windows-amd64.exe'
+          code=$(curl --silent --output /dev/null --write-out '%{http_code}' --noproxy '*' --cacert /etc/kienzle-sumup/server.crt --resolve "$host:127.0.0.1" "https://$host/client-download.php?os=windows")
+          test "$code" = 401
       - name: Installer diagnostics
         if: failure()
         run: sudo journalctl -u kienzle-sumup-apache -u kienzle-sumup-php --no-pager -n 60

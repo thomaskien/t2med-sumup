@@ -54,11 +54,12 @@ final class FhirClient {
         $lines = array_map(static fn (array $s): string => (($s['goae_code'] ?? '') !== '' ? 'GOÄ ' . $s['goae_code'] . ', Faktor ' . str_replace('.', ',', $s['factor']) . ': ' : '') .
             $s['label'] . ' ' . Money::format($s['price_cents']) . (!empty($s['on_request']) ? ' (auf Verlangen)' : '') .
             (!empty($s['reason']) ? '; Begründung: ' . $s['reason'] : ''), $services);
-        $text = 'Kartenzahlung – ' . Money::format($payment['amount_cents']) . "\n" . implode('; ', $lines) . "\n" .
-            'Zahlung am ' . $paid->format('d.m.Y') . ' um ' . $paid->format('H:i') . ' Uhr über SumUp erfolgreich.' . "\n" . 'Transaktionsreferenz: ' . $payment['reference'];
+        $cash = ($payment['payment_method'] ?? 'card') === 'cash';
+        $text = ($cash ? 'Barzahlung – ' : 'Kartenzahlung – ') . Money::format($payment['amount_cents']) . "\n" . implode('; ', $lines) . "\n" .
+            'Zahlung am ' . $paid->format('d.m.Y') . ' um ' . $paid->format('H:i') . ($cash ? ' Uhr bar erhalten.' : ' Uhr über SumUp erfolgreich.') . "\n" . 'Transaktionsreferenz: ' . $payment['reference'];
         if (!empty($payment['invoice_json'])) {
             $invoice = json_decode($payment['invoice_json'], true, 32, JSON_THROW_ON_ERROR);
-            $text .= "\nRechnungsnummer (SumUp): " . ($payment['transaction_id'] ?? '') . "\nLeistungsdatum: " . $invoice['service_date'];
+            $text .= ($cash ? "\nRechnungsnummer: " : "\nRechnungsnummer (SumUp): ") . ($payment['transaction_id'] ?? '') . "\nLeistungsdatum: " . $invoice['service_date'];
         }
         return ['resourceType' => 'Observation',
             'meta' => ['profile' => ['https://fhir.t2med.de/StructureDefinition/FhirApiObservationFreitext|1.0.0']],

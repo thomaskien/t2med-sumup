@@ -4,13 +4,19 @@ namespace KienzleSumup;
 
 class ReceiptMailer {
     public function __construct(private Config $config) {}
-    public function message(string $email, string $pdf, string $reference): \PHPMailer\PHPMailer\PHPMailer {
-        if (!$this->config->get('mail', 'enabled', false)) throw new Problem('E-Mail-Versand ist im Server-Installer noch nicht eingerichtet.', 409);
-        if (!class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) {
-            $autoload = '/usr/share/php/libphp-phpmailer/autoload.php';
-            if (!is_file($autoload)) throw new Problem('Mailbibliothek fehlt. Bitte den aktualisierten Server-Installer ausführen (libphp-phpmailer).', 503);
+    /** Systempaket (per apt aktuell gehalten) zuerst, sonst die mitgelieferte Kopie in src/vendor/phpmailer. */
+    public static function loadLibrary(): void {
+        if (class_exists(\PHPMailer\PHPMailer\PHPMailer::class, false)) return;
+        foreach (['/usr/share/php/libphp-phpmailer/autoload.php', __DIR__ . '/vendor/phpmailer/autoload.php'] as $autoload) {
+            if (!is_file($autoload)) continue;
             require_once $autoload;
+            if (class_exists(\PHPMailer\PHPMailer\PHPMailer::class)) return;
         }
+        throw new Problem('Mailbibliothek fehlt (src/vendor/phpmailer). Bitte die Anwendung neu installieren oder aktualisieren.', 503);
+    }
+    public function message(string $email, string $pdf, string $reference): \PHPMailer\PHPMailer\PHPMailer {
+        if (!$this->config->get('mail', 'enabled', false)) throw new Problem('E-Mail-Versand ist noch nicht eingerichtet (Einstellungen → E-Mail-Versand).', 409);
+        self::loadLibrary();
         if (!filter_var($email, FILTER_VALIDATE_EMAIL) || preg_match('/[\r\n]/', $email)) throw new Problem('Bitte eine gültige E-Mail-Adresse eingeben.');
         $mail = new \PHPMailer\PHPMailer\PHPMailer(true);
         $mail->isSMTP(); $mail->Host = $this->config->get('mail', 'host'); $mail->Port = $this->config->get('mail', 'port');

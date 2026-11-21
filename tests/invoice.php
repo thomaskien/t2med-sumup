@@ -133,6 +133,14 @@ try {
     $next=['request_id'=>App::id(),'services'=>[$high],'manual_amount'=>''];
     rejects(fn()=>$app->start($v2,$next),'Schwellenüberschreitung ohne Begründung');
     rejects(fn()=>$app->saveService($v2,['label'=>'Ungültig','price'=>'2','goae_code'=>'3562','factor'=>'2,3','fee_type'=>'lab']),'Unzulässiger Laborfaktor');
+    // Fest bei der Ziffer hinterlegte Begründung wird verwendet, wenn an der Kasse keine eingegeben wird.
+    [$v3,$b3]=visit($app,'festebegruendung');
+    $app->saveService($v3,['label'=>'Eingehende Beratung','price'=>'20,00','goae_code'=>'3','factor'=>'2,8','default_reason'=>'Zeitaufwand wegen komplexer Mehrfacherkrankung']);
+    check($db->one('SELECT default_reason FROM services WHERE label=?',['Eingehende Beratung'])['default_reason']==='Zeitaufwand wegen komplexer Mehrfacherkrankung','Feste Begründung nicht gespeichert');
+    $fixed=$db->one('SELECT id FROM services WHERE label=?',['Eingehende Beratung'])['id'];
+    $p3=$app->start($v3,['request_id'=>App::id(),'services'=>[$fixed],'manual_amount'=>'']);
+    check(str_contains($db->one('SELECT invoice_json FROM payments WHERE id=?',[$p3['id']])['invoice_json'],'Zeitaufwand wegen komplexer'),'Feste Begründung fehlt auf der Rechnung');
+    $db->query("UPDATE payments SET payment_status='cancelled' WHERE id=?",[$p3['id']]);
     $next['reasons']=[$high=>'Erschwerte Beratung im konkreten Fall']; $p2=$app->start($v2,$next);
     check($p2['amount_cents']===1234,'Faktor multipliziert Festpreis');
     check(str_contains($db->one('SELECT invoice_json FROM payments WHERE id=?',[$p2['id']])['invoice_json'],'Erschwerte Beratung'),'Begründung fehlt im Snapshot');

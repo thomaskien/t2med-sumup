@@ -46,9 +46,51 @@ from_name = ""
 # Optionaler RAW-Direktdruck auf Epson TM-m10 (58 mm), Samba-Gastzugriff.
 [printing]
 enabled = false
+# tm-m10 (58 mm, 420 Punkte) oder tm-m30iii (80 mm, 576 Punkte)
+model = "tm-m10"
+# samba: Freigabe auf dem Druckserver; cups: RAW-Warteschlange (z. B. TM-m30III per LAN)
+transport = "samba"
 share = "//kienzlebox/TMm10"
+cups_server = ""
+queue = "TMm10"
 width_dots = 420
 cut = true
+# Bei „Bar bezahlt“ (T2med-Rechnung) sofort eine Quittung drucken
+cash_receipt_auto = false
+
+# Optional: T2med-Rechnungen über den virtuellen Drucker „SumUp-Rechnung“ übernehmen.
+# Der Druckserver sendet die PDF mit diesem Schlüssel an /invoice-inbox.php.
+[invoice_inbox]
+enabled = false
+key = ""
+# Nicht kassierte Rechnungen werden nach dieser Anzahl Tage nicht mehr angeboten.
+max_age_days = 14
+
+# Optional: Original-PDF der T2med-Rechnung in einen Netzwerkordner (SMB) kopieren,
+# z. B. für die Steuerberatung. Dateiname: 2026-03-15_RE2026-0042_42,50EUR_Karte.pdf
+[invoice_export]
+enabled = false
+share = "//nas/steuerberater"
+# Unterordner in der Freigabe; {jahr} und {monat} stammen aus dem Rechnungsdatum.
+directory = "Rechnungen/{jahr}/{monat}"
+# Leer: Gastzugriff ohne Passwort.
+username = ""
+password = ""
+domain = ""
+# T2med-Rechnungen: paid = nur per Karte bezahlte, received = jede auf SumUp-Rechnung gedruckte.
+when = "paid"
+# Auch die in dieser App erzeugten Rechnungen/Leistungsbelege nach erfolgreicher Zahlung ablegen.
+app_invoices = false
+
+# Optional: normaler Praxisdrucker (A4) über CUPS, z. B. Laserdrucker am Empfang.
+# T2med-Rechnungen werden immer hier gedruckt; App-Rechnungen wahlweise hier oder auf dem Bondrucker.
+# cups_server leer = CUPS auf diesem Server, sonst z. B. "kienzlebox:631".
+[office_printing]
+enabled = false
+cups_server = ""
+queue = "Praxisdrucker"
+media = "A4"
+duplex = false
 
 # Lokaler Leistungsbeleg / GOÄ-Rechnung mit Zahlungsbestätigung.
 # Name und Anschrift ausfüllen; Bestandszahlungen behalten ihren bisherigen Beleg.

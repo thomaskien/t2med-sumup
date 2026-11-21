@@ -6,13 +6,13 @@ class ReceiptPrinter {
     public function __construct(private Config $config) {}
     public function prepare(string $source): string {
         if (!extension_loaded('gd')) throw new Problem('Druckaufbereitung fehlt. Bitte den Server-Installer mit aktiviertem Direktdruck ausführen (php-gd).', 503);
-        return self::escpos(ReceiptPdf::raster($source, $this->config->get('printing', 'width_dots', 420)), $this->config->get('printing', 'cut', true));
+        return self::escpos(ReceiptPdf::raster($source, $this->width()), $this->config->get('printing', 'cut', true));
     }
     /** Epson GS ( L: Grafik in Streifen speichern (112) und drucken (50). */
     public static function escpos(string $png, bool $cut): string {
         $size = @getimagesizefromstring($png);
-        if (!$size || $size[2] !== IMAGETYPE_PNG || $size[0] < 1 || $size[0] > 420 || $size[1] < 1 || $size[1] > 12000) {
-            throw new Problem('Der Beleg ist für den TM-m10 zu groß oder unlesbar.', 502);
+        if (!$size || $size[2] !== IMAGETYPE_PNG || $size[0] < 1 || $size[0] > 576 || $size[1] < 1 || $size[1] > 12000) {
+            throw new Problem('Der Beleg ist für den Bondrucker zu groß oder unlesbar.', 502);
         }
         $image = @imagecreatefromstring($png);
         if (!$image) throw new Problem('Belegbild konnte nicht gelesen werden.', 502);
@@ -44,9 +44,19 @@ class ReceiptPrinter {
             return $data . ($cut ? "\x1d\x56\x42\x00" : "\x1b\x64\x03");
         } finally { unset($image); }
     }
+    public function width(): int {
+        $model = $this->config->get('printing', 'model', 'tm-m10');
+        return $this->config->get('printing', 'width_dots', Config::PRINTER_MODELS[$model]['width_dots'] ?? 420);
+    }
     public function send(string $data): void {
         if (!$this->config->get('printing', 'enabled', false)) throw new Problem('Direktdruck ist deaktiviert.', 409);
         try {
+            if ($this->config->get('printing', 'transport', 'samba') === 'cups') {
+                // RAW-Warteschlange (z. B. TM-m30III per LAN): ESC/POS unverändert durchreichen.
+                Cups::submit($this->config->get('printing', 'cups_server', ''), $this->config->get('printing', 'queue'),
+                    'Kienzle-SumUp Beleg', ['-o', 'raw'], $data, fn(array $args, string $input) => $this->cups($args, $input));
+                return;
+            }
             $result = $this->transfer($data);
             if ($result['code'] !== 0) {
                 // Nur technische Statuscodes übernehmen, keine Rohantworten oder Belegdaten.
@@ -59,6 +69,9 @@ class ReceiptPrinter {
             error_log('kienzle-sumup: Druckübergabe: ' . $e->getMessage());
             throw new Problem('Druckübergabe nicht bestätigt. ' . $e->getMessage() . ' Drucker und Warteschlange vor einem neuen Druckversuch prüfen.', $e->http);
         }
+    }
+    protected function cups(array $args, string $data): array {
+        return Cups::run($args, $data, 20);
     }
     protected function transfer(string $data): array {
         if (!is_executable('/usr/bin/smbclient')) throw new Problem('Samba-Druckclient fehlt. Bitte den Server-Installer mit aktiviertem Direktdruck ausführen.', 503);

@@ -1,0 +1,74 @@
+# /etc/terminzettel/config.toml
+# T2med-Terminbeleg -> 58-mm-Terminbon -> lokale CUPS-Warteschlange
+
+[input]
+# Wird nur für bereits als Text angelieferte Jobs benötigt.
+text_encoding = "utf-8"
+# Bild-PDFs automatisch lokal mit Tesseract (Deutsch) lesen.
+ocr_if_needed = true
+
+[output]
+# Bereits vorhandene lokale CUPS-Warteschlange.
+queue = "TMm10"
+format = "escpos"  # escpos | text
+text_encoding = "utf-8"
+
+[escpos]
+# Epson PC858: Umlaute + Euro. ESC t 19 wird vor dem Text gesendet.
+encoding = "cp858"
+codepage = 19
+font = "A"
+initialize = true
+
+# Papier nach dem Inhalt noch etwas vorschieben.
+feed_lines = 4
+
+# partial | full | none
+cut = "partial"
+
+# Ersatzzeichen für Zeichen, die in der gewählten Codepage fehlen.
+unencodable = "?"
+
+[layout]
+# TM-m10, 58 mm, Font A: Zeichenanzahl in NORMALBREITE.
+# Doppelte Breite halbiert automatisch die Zeichen je Zeile (35 -> 17).
+columns = 35
+double_height = true
+double_width = true
+heading = "IHRE TERMINE"
+heading_double_height = true
+show_patient = true
+footer_separator = true
+separator_char = "-"
+
+[header]
+enabled = true
+align = "center"
+bold = true
+text = """
+"""
+
+[footer]
+enabled = true
+align = "center"
+bold = false
+text = "Können Sie einen Termin nicht wahrnehmen, sagen Sie bitte unbedingt Bescheid."
+
+[calendar_qr]
+enabled = true
+# Präfix für den Kalender-Titel; der Installer fragt ihn ab.
+# Beispiel: "Praxis ABC" + Termintyp "Lufu" ergibt "Praxis ABC: Lufu".
+# Leer lassen für den Termintyp ohne Präfix. Keine Patientennamen eintragen.
+summary = "Termin Arztpraxis"
+timezone = "Europe/Berlin"
+default_duration_minutes = 15
+
+# Optional die Praxisadresse im Kalendereintrag anzeigen.
+include_location = false
+location = ""
+
+error_correction = "M"
+quiet_zone_modules = 4
+# Ein kleiner QR rechts neben Uhrzeit und Terminart, unter dem Datum.
+max_width_dots = 256
+min_module_dots = 3

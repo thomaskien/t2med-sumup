@@ -7,7 +7,7 @@ final class ReceiptPdf {
         return self::render($source, ['--format=pdf'], '%PDF-');
     }
     public static function raster(string $source, int $width): string {
-        if ($width < 128 || $width > 420) throw new Problem('Ungültige Druckbreite.');
+        if ($width < 128 || $width > 576) throw new Problem('Ungültige Druckbreite.');
         return self::render($source, ['--format=png', '--width=' . $width, '--keep-aspect-ratio', '--background-color=white'], "\x89PNG\r\n\x1a\n");
     }
     private static function render(string $source, array $options, string $signature): string {
